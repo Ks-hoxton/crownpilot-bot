@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import { getConfig } from "./config.js";
 import { AgendaService } from "./services/agenda-service.js";
 import { Bitrix24ConnectionService } from "./services/integrations/bitrix24-connection-service.js";
@@ -23,38 +23,89 @@ function getTelegramUserId(ctx: { from?: { id: number } }): number | undefined {
 
 function buildCalendarRoleKeyboard(telegramUserId: number) {
   return new InlineKeyboard()
-    .text("Личный Google", `connect_calendar:personal:${telegramUserId}`)
+    .text("🧑 Личный Google", `connect_calendar:personal:${telegramUserId}`)
     .row()
-    .text("Рабочий Google", `connect_calendar:work:${telegramUserId}`);
+    .text("🏢 Рабочий Google", `connect_calendar:work:${telegramUserId}`);
 }
 
 function buildBitrixConnectKeyboard(telegramUserId: number, portalDomain: string) {
-  return new InlineKeyboard().text("Подключить Bitrix24", `connect_bitrix_oauth:${telegramUserId}:${portalDomain}`);
+  return new InlineKeyboard().text("🔐 Подключить Bitrix24", `connect_bitrix_oauth:${telegramUserId}:${portalDomain}`);
 }
 
-function getStartMessage() {
+function buildMainMenuKeyboard() {
+  return new Keyboard()
+    .text("✨ План на сегодня")
+    .text("📅 Мои встречи")
+    .row()
+    .text("✅ Задачи сегодня")
+    .text("🗂 Задачи завтра")
+    .row()
+    .text("🎂 Дни рождения")
+    .text("🏅 Юбилеи")
+    .row()
+    .text("🔌 Подключить сервисы")
+    .text("👥 Пригласить коллегу")
+    .resized()
+    .persistent();
+}
+
+function buildPeopleKeyboard(kind: "birthdays" | "anniversaries") {
+  return new InlineKeyboard()
+    .text("Сегодня", `${kind}:today`)
+    .text("Завтра", `${kind}:tomorrow`);
+}
+
+function buildConnectionsKeyboard(telegramUserId: number) {
+  const keyboard = new InlineKeyboard()
+    .text("🗓 Подключить календарь", `open_connect_calendar:${telegramUserId}`);
+
+  if (bitrix24ConnectionService.isOAuthConfigured()) {
+    keyboard.row().text("🧩 Подключить Bitrix24", `prompt_bitrix_portal:${telegramUserId}`);
+  }
+
+  return keyboard;
+}
+
+function getInviteLink() {
+  return "https://t.me/CrownPilotBot?start=invite";
+}
+
+function getStatusLine(enabled: boolean, text: string) {
+  return `${enabled ? "✅" : "◻️"} ${text}`;
+}
+
+function getWelcomeMessage(telegramUserId: number, startPayload?: string) {
+  const hasGoogle = store.getGoogleConnections(telegramUserId).length > 0;
+  const hasBitrix = Boolean(store.getBitrixConnection(telegramUserId));
+  const invited = startPayload === "invite";
+
   return [
-    "CrownPilot готов.",
+    invited ? "👋 Вас пригласили в CrownPilot." : "👋 Добро пожаловать в CrownPilot.",
     "",
-    "Команды:",
-    "/connect_calendar",
-    "/connect_bitrix",
-    "/my_tasks_today",
-    "/my_tasks_tomorrow",
-    "/my_meetings_today",
-    "/birthdays_today",
-    "/birthdays_tomorrow",
-    "/anniversaries_today",
-    "/anniversaries_tomorrow",
+    "Я собираю ваш рабочий день в одном чате:",
+    "• 📅 встречи на сегодня",
+    "• ✅ задачи из Bitrix24",
+    "• 🎂 дни рождения коллег",
+    "• 🏅 юбилеи по дате выхода",
     "",
-    'Можно писать и обычным языком: "план на сегодня", "мои задачи сегодня", "подключить календарь".'
+    "Что осталось подключить:",
+    getStatusLine(hasGoogle, "Google Calendar"),
+    getStatusLine(hasBitrix, "Bitrix24"),
+    "",
+    hasGoogle && hasBitrix
+      ? "Готово. Нажмите «✨ План на сегодня» или выберите действие кнопками ниже."
+      : bitrix24ConnectionService.isOAuthConfigured()
+        ? "Шаг 1: подключите календарь. Шаг 2: подключите Bitrix24. После этого бот сразу соберет ваш день."
+        : "Шаг 1: подключите календарь. Для Bitrix24 пока доступно ручное подключение через /connect_bitrix и webhook."
   ].join("\n");
 }
 
 function getBitrixPortalPromptText() {
   return [
-    "Пришлите домен вашего Bitrix24.",
-    "Пример: yourcompany.bitrix24.ru"
+    "🔗 Пришлите домен вашего Bitrix24.",
+    "Пример: yourcompany.bitrix24.ru",
+    "",
+    "Я подготовлю кнопку входа и верну вас обратно в бот."
   ].join("\n");
 }
 
@@ -111,7 +162,7 @@ function formatTaskList(title: string, tasks: BitrixTask[], timeZone: string): s
 
   return [
     title,
-    `Время показано в: ${formatGmtOffsetLabel(timeZone)}`,
+    `🕒 Время показано в: ${formatGmtOffsetLabel(timeZone)}`,
     "",
     ...lines
   ].join("\n");
@@ -130,7 +181,7 @@ function formatMeetingsList(title: string, meetings: CalendarMeeting[], timeZone
 
   return [
     title,
-    `Время показано в: ${formatGmtOffsetLabel(timeZone)}`,
+    `🕒 Время показано в: ${formatGmtOffsetLabel(timeZone)}`,
     "",
     ...lines
   ].join("\n");
@@ -225,8 +276,23 @@ async function replyAnniversaries(
 
 function getBitrixUnavailableMessage(): string {
   return [
-    "Bitrix пока не доступен.",
+    "⚠️ Bitrix пока не доступен.",
     "Попробуйте подключить его заново через /connect_bitrix."
+  ].join("\n");
+}
+
+function getInviteMessage() {
+  return [
+    "👥 Ссылка для коллеги:",
+    getInviteLink(),
+    "",
+    "Как пройдет onboarding:",
+    "1. Откроет бота",
+    "2. Подключит Google Calendar",
+    bitrix24ConnectionService.isOAuthConfigured()
+      ? "3. Подключит Bitrix24"
+      : "3. Подключит Bitrix24, если у нее будет личный webhook или когда мы включим Bitrix OAuth",
+    "4. Сразу получит свой «План на сегодня»"
   ].join("\n");
 }
 
@@ -237,7 +303,19 @@ export function createBot(): Bot {
     const userId = getTelegramUserId(ctx);
     if (!userId) return;
     store.rememberTelegramUser(userId);
-    await ctx.reply(getStartMessage());
+    const startPayload = typeof ctx.match === "string" ? ctx.match.trim() : undefined;
+    await ctx.reply(
+      getWelcomeMessage(userId, startPayload),
+      {
+        reply_markup: buildMainMenuKeyboard()
+      }
+    );
+
+    if (store.getGoogleConnections(userId).length === 0 || !store.getBitrixConnection(userId)) {
+      await ctx.reply("🔌 Начнем с подключений:", {
+        reply_markup: buildConnectionsKeyboard(userId)
+      });
+    }
   });
 
   bot.command("connect_calendar", async (ctx) => {
@@ -246,7 +324,7 @@ export function createBot(): Bot {
     store.rememberTelegramUser(userId);
     await ctx.reply(
       [
-        "Какой Google-аккаунт подключаем?",
+        "🗓 Какой Google-аккаунт подключаем?",
         "Можно подключить и личный, и рабочий."
       ].join("\n"),
       { reply_markup: buildCalendarRoleKeyboard(userId) }
@@ -263,14 +341,23 @@ export function createBot(): Bot {
       const portalDomain = normalizePortalDomain(rawPortal);
       store.clearPendingUserAction(userId);
       await ctx.reply(
-        `Подготовил OAuth для портала ${portalDomain}.`,
+        `🧩 Подготовил OAuth для портала ${portalDomain}.`,
         { reply_markup: buildBitrixConnectKeyboard(userId, portalDomain) }
       );
       return;
     }
 
     await ctx.reply(
-      formatBitrixConnectionStatus(userId),
+      [
+        formatBitrixConnectionStatus(userId),
+        "",
+        bitrix24ConnectionService.isOAuthConfigured()
+          ? "Нажмите кнопку ниже и я проведу вас через вход в Bitrix24."
+          : "Пока доступно ручное подключение через webhook.",
+        !bitrix24ConnectionService.isOAuthConfigured()
+          ? "Формат: bitrix https://yourcompany.bitrix24.ru/rest/1/your_webhook/"
+          : null
+      ].filter(Boolean).join("\n"),
       bitrix24ConnectionService.isOAuthConfigured()
         ? { reply_markup: new InlineKeyboard().text("Указать домен Bitrix24", `prompt_bitrix_portal:${userId}`) }
         : undefined
@@ -326,6 +413,25 @@ export function createBot(): Bot {
     await replyAnniversaries(ctx, userId, 1);
   });
 
+  bot.callbackQuery(/^open_connect_calendar:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const telegramUserId = Number(ctx.match[1]);
+    const userId = getTelegramUserId(ctx);
+
+    if (!userId || telegramUserId !== userId) {
+      await ctx.reply("Эта кнопка привязана к другому пользователю.");
+      return;
+    }
+
+    await ctx.reply(
+      [
+        "🗓 Какой Google-аккаунт подключаем?",
+        "Можно подключить и личный, и рабочий."
+      ].join("\n"),
+      { reply_markup: buildCalendarRoleKeyboard(userId) }
+    );
+  });
+
   bot.callbackQuery(/^connect_calendar:(personal|work):(\d+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
 
@@ -343,8 +449,8 @@ export function createBot(): Bot {
     try {
       const url = googleOAuthService.getConnectUrl(userId, role);
       await ctx.reply(
-        `Подключаем ${role === "personal" ? "личный" : "рабочий"} Google-аккаунт.`,
-        { reply_markup: new InlineKeyboard().url("Open Google OAuth", url) }
+        `🔐 Подключаем ${role === "personal" ? "личный" : "рабочий"} Google-аккаунт.`,
+        { reply_markup: new InlineKeyboard().url("Открыть Google OAuth", url) }
       );
     } catch (error) {
       console.error(error);
@@ -362,6 +468,17 @@ export function createBot(): Bot {
 
     if (telegramUserId !== userId) {
       await ctx.reply("Эта кнопка привязана к другому пользователю.");
+      return;
+    }
+
+    if (!bitrix24ConnectionService.isOAuthConfigured()) {
+      await ctx.reply(
+        [
+          "⚠️ Bitrix OAuth пока не настроен.",
+          "Сейчас можно подключить Bitrix24 только вручную через webhook.",
+          "Формат: bitrix https://yourcompany.bitrix24.ru/rest/1/your_webhook/"
+        ].join("\n")
+      );
       return;
     }
 
@@ -387,8 +504,8 @@ export function createBot(): Bot {
       store.clearPendingUserAction(userId);
       const connectUrl = bitrix24ConnectionService.getOAuthConnectUrl(userId, portalDomain);
       await ctx.reply(
-        `Подключаем портал ${portalDomain}.`,
-        { reply_markup: new InlineKeyboard().url("Open Bitrix24 OAuth", connectUrl) }
+        `🔐 Подключаем портал ${portalDomain}.`,
+        { reply_markup: new InlineKeyboard().url("Открыть Bitrix24 OAuth", connectUrl) }
       );
     } catch (error) {
       console.error(error);
@@ -413,9 +530,21 @@ export function createBot(): Bot {
         return;
       }
 
+      if (!bitrix24ConnectionService.isOAuthConfigured()) {
+        store.clearPendingUserAction(userId);
+        await ctx.reply(
+          [
+            "⚠️ Bitrix OAuth пока не настроен.",
+            "Сейчас можно подключить Bitrix24 только вручную через webhook.",
+            "Формат: bitrix https://yourcompany.bitrix24.ru/rest/1/your_webhook/"
+          ].join("\n")
+        );
+        return;
+      }
+
       store.clearPendingUserAction(userId);
       await ctx.reply(
-        `Подготовил OAuth для портала ${portalDomain}.`,
+        `🧩 Подготовил OAuth для портала ${portalDomain}.`,
         { reply_markup: buildBitrixConnectKeyboard(userId, portalDomain) }
       );
       return;
@@ -427,12 +556,12 @@ export function createBot(): Bot {
         const connection = await bitrix24ConnectionService.connectViaWebhook(userId, webhookUrl);
         await ctx.reply(
           [
-            "Bitrix24 подключен через webhook.",
+            "✅ Bitrix24 подключен через webhook.",
             connection.portalBase ? `Портал: ${connection.portalBase}` : null,
             connection.mappedUserName
               ? `Ваш Bitrix user: ${connection.mappedUserName}${connection.mappedUserId ? ` (id ${connection.mappedUserId})` : ""}`
               : null,
-            "Бот будет читать только ваши задачи."
+            "Бот будет читать только ваши задачи и календарь сотрудников."
           ].filter(Boolean).join("\n")
         );
       } catch (error) {
@@ -442,22 +571,22 @@ export function createBot(): Bot {
       return;
     }
 
-    if (input === "план на сегодня") {
+    if (input === "план на сегодня" || input === "✨ план на сегодня") {
       await replyPlanToday(ctx, userId);
       return;
     }
 
-    if (input === "мои встречи сегодня") {
+    if (input === "мои встречи сегодня" || input === "📅 мои встречи") {
       await replyMyMeetingsToday(ctx, userId);
       return;
     }
 
-    if (input === "мои задачи сегодня") {
+    if (input === "мои задачи сегодня" || input === "✅ задачи сегодня") {
       await replyMyTasks(ctx, userId, 0);
       return;
     }
 
-    if (input === "мои задачи завтра") {
+    if (input === "мои задачи завтра" || input === "🗂 задачи завтра") {
       await replyMyTasks(ctx, userId, 1);
       return;
     }
@@ -472,6 +601,13 @@ export function createBot(): Bot {
       return;
     }
 
+    if (input === "🎂 дни рождения") {
+      await ctx.reply("🎂 Что показать?", {
+        reply_markup: buildPeopleKeyboard("birthdays")
+      });
+      return;
+    }
+
     if (input === "юбилеи коллег сегодня") {
       await replyAnniversaries(ctx, userId, 0);
       return;
@@ -482,24 +618,60 @@ export function createBot(): Bot {
       return;
     }
 
+    if (input === "🏅 юбилеи") {
+      await ctx.reply("🏅 Что показать?", {
+        reply_markup: buildPeopleKeyboard("anniversaries")
+      });
+      return;
+    }
+
     if (input === "подключить календарь") {
-      await ctx.reply("Выберите Google-аккаунт для подключения.", {
+      await ctx.reply("🗓 Выберите Google-аккаунт для подключения.", {
         reply_markup: buildCalendarRoleKeyboard(userId)
       });
       return;
     }
 
-    if (input === "подключить битрикс") {
+    if (input === "подключить битрикс" || input === "🔌 подключить сервисы") {
       await ctx.reply(
-        formatBitrixConnectionStatus(userId),
-        bitrix24ConnectionService.isOAuthConfigured()
-          ? { reply_markup: new InlineKeyboard().text("Указать домен Bitrix24", `prompt_bitrix_portal:${userId}`) }
-          : undefined
+        [
+          "🔌 Подключения",
+          "",
+          `${store.getGoogleConnections(userId).length > 0 ? "✅" : "◻️"} Google Calendar`,
+          `${store.getBitrixConnection(userId) ? "✅" : "◻️"} Bitrix24`,
+          "",
+          bitrix24ConnectionService.isOAuthConfigured()
+            ? "Можно пройти обычный onboarding кнопками ниже."
+            : "Bitrix24 пока подключается вручную через webhook."
+        ].join("\n"),
+        { reply_markup: buildConnectionsKeyboard(userId) }
       );
       return;
     }
 
-    await ctx.reply(getStartMessage());
+    if (input === "👥 пригласить коллегу") {
+      await ctx.reply(getInviteMessage());
+      return;
+    }
+
+    await ctx.reply(
+      getWelcomeMessage(userId),
+      { reply_markup: buildMainMenuKeyboard() }
+    );
+  });
+
+  bot.callbackQuery(/^birthdays:(today|tomorrow)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const userId = getTelegramUserId(ctx);
+    if (!userId) return;
+    await replyBirthdays(ctx, userId, ctx.match[1] === "today" ? 0 : 1);
+  });
+
+  bot.callbackQuery(/^anniversaries:(today|tomorrow)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const userId = getTelegramUserId(ctx);
+    if (!userId) return;
+    await replyAnniversaries(ctx, userId, ctx.match[1] === "today" ? 0 : 1);
   });
 
   return bot;
