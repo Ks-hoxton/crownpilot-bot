@@ -46,13 +46,19 @@ function buildMainMenuKeyboard(telegramUserId: number) {
   const hasGoogle = hasGoogleConnection(telegramUserId);
   const hasBitrix = hasBitrixConnection(telegramUserId);
 
-  keyboard.text("✨ План на сегодня");
-
-  if (hasGoogle) {
-    keyboard.text("📅 Мои встречи сегодня");
+  if (hasGoogle || hasBitrix) {
+    keyboard.text("✨ План на сегодня");
   }
 
-  keyboard.row();
+  if (hasGoogle) {
+    if (hasGoogle || hasBitrix) {
+      keyboard.text("📅 Мои встречи сегодня");
+    }
+  }
+
+  if (hasGoogle || hasBitrix) {
+    keyboard.row();
+  }
 
   if (hasBitrix) {
     keyboard.text("✅ Мои задачи сегодня").text("🗂 Мои задачи завтра").row();
@@ -103,25 +109,29 @@ function getWelcomeMessage(telegramUserId: number, startPayload?: string) {
   const hasGoogle = hasGoogleConnection(telegramUserId);
   const hasBitrix = hasBitrixConnection(telegramUserId);
   const invited = startPayload === "invite";
-  const nextStep = hasGoogle
-    ? hasBitrix
-      ? "Все системы на связи. Выбирайте действие кнопками ниже, и я соберу день без лишнего шума."
-      : "Следующий шаг: войдите в Bitrix24. Тогда я добавлю задачи, дни рождения и юбилеи коллег."
-    : "Начнем с Google Calendar. После этого я предложу подключить Bitrix24 и соберу все в одном чате.";
+  const nextStep = hasGoogle && hasBitrix
+    ? "Все готово. Теперь я могу собрать ваш день, показать встречи, задачи и важные события команды в одном окне."
+    : hasGoogle
+      ? "Google Calendar уже подключен. Осталось войти в Bitrix24, и я добавлю задачи, дни рождения и юбилеи коллег."
+      : hasBitrix
+        ? "Bitrix24 уже подключен. Осталось войти в Google Calendar, и я добавлю встречи и утренний план дня."
+        : "Начнем с подключения сервисов. Можно войти в Google Calendar или Bitrix24, а потом я соберу все в одном чате.";
 
   return [
     invited ? "👋 Вас пригласили в CrownPilot для команды SBL." : "👋 Добро пожаловать в CrownPilot.",
     "",
     "Я Jarvis.",
-    "Представьте помощника в духе Iron Man, только для команды SBL: спокойного, внимательного и всегда на шаг впереди.",
+    "Я помощник для команды SBL: спокойный, внимательный и собранный. Моя задача — держать день под контролем, чтобы ничего не потерялось.",
     "",
-    "Я умею:",
-    "• 📅 собирать встречи на сегодня",
-    "• ✅ напоминать о задачах из Bitrix24",
-    "• 🎂 подсказывать дни рождения коллег",
-    "• 🏅 напоминать о юбилеях по дате выхода",
+    "Чем я полезен:",
+    "• 📅 собираю встречи на сегодня",
+    "• ✅ напоминаю о задачах из Bitrix24",
+    "• 🎂 подсказываю дни рождения коллег",
+    "• 🏅 напоминаю о юбилеях по дате выхода",
+    "• ⏰ в 10:00 присылаю план на день по календарю сотрудника",
+    "• 🔗 за 5 минут до встречи присылаю ссылку прямо в чат",
     "",
-    "Статус подключений:",
+    "Подключения:",
     getStatusLine(hasGoogle, "Google Calendar"),
     getStatusLine(hasBitrix, "Bitrix24"),
     "",
@@ -134,7 +144,7 @@ function getBitrixPortalPromptText() {
     "🔗 Пришлите домен вашего Bitrix24.",
     "Пример: yourcompany.bitrix24.ru",
     "",
-    "Я подготовлю безопасный вход и верну вас обратно в Jarvis."
+    "Я подготовлю безопасный вход и сразу верну вас обратно в Jarvis."
   ].join("\n");
 }
 
@@ -166,7 +176,7 @@ function formatGmtOffsetLabel(timeZone: string, dateLike: string | Date = new Da
 
 function formatTaskList(title: string, tasks: BitrixTask[], timeZone: string): string {
   const lines = tasks.length === 0
-    ? [title === "Мои задачи сегодня" ? "На сегодня нет задач." : "На завтра нет задач."]
+    ? [title === "Мои задачи сегодня" ? "На сегодня задач нет." : "На завтра задач нет."]
     : tasks.map((task, index) => {
       const deadline = task.deadline
         ? new Intl.DateTimeFormat("ru-RU", {
@@ -214,8 +224,8 @@ function formatMeetingsList(title: string, meetings: CalendarMeeting[], timeZone
 
 function formatBirthdays(title: string, entries: BirthdayEntry[]): string {
   const emptyLine = title === "Дни рождения сегодня"
-    ? "Сегодня дней рождения нет."
-    : "Завтра дней рождения нет.";
+    ? "Сегодня в команде нет дней рождения."
+    : "Завтра в команде нет дней рождения.";
 
   const normalizedLines = entries.length === 0
     ? [emptyLine]
@@ -231,8 +241,8 @@ function formatBirthdays(title: string, entries: BirthdayEntry[]): string {
 
 function formatAnniversaries(title: string, entries: AnniversaryEntry[]): string {
   const emptyLine = title === "Юбилеи коллег сегодня"
-    ? "Сегодня юбилеев коллег нет."
-    : "Завтра юбилеев коллег нет.";
+    ? "Сегодня в команде нет юбилеев."
+    : "Завтра в команде нет юбилеев.";
 
   const normalizedLines = entries.length === 0
     ? [emptyLine]
@@ -264,14 +274,14 @@ function pluralizeYears(value: number): string {
 function getGoogleLoginRequiredMessage(): string {
   return [
     "🔐 Сначала войдите в Google Calendar.",
-    "После этого я смогу показать встречи и собрать план дня по календарю."
+    "После этого я смогу показать встречи, присылать ссылку перед звонком и собирать план дня."
   ].join("\n");
 }
 
 function getBitrixLoginRequiredMessage(): string {
   return [
     "🔐 Сначала войдите в Bitrix24.",
-    "После этого я смогу показать задачи, дни рождения и юбилеи коллег."
+    "После этого я смогу показать ваши задачи, дни рождения и юбилеи коллег."
   ].join("\n");
 }
 
@@ -367,20 +377,21 @@ async function replyAnniversaries(
 function getBitrixUnavailableMessage(): string {
   return [
     "⚠️ Bitrix пока не доступен.",
-    "Попробуйте подключить его заново через /connect_bitrix."
+    "Ничего не потерялось. Попробуйте подключить его заново через /connect_bitrix."
   ].join("\n");
 }
 
 function getInviteMessage() {
   return [
-    "👥 Ссылка для коллеги:",
-    getInviteLink(),
+    "👥 Перешлите коллеге это сообщение:",
     "",
-    "Как пройдет onboarding:",
-    "1. Jarvis поприветствует и коротко объяснит, что умеет.",
-    "2. Сначала предложит войти в Google Calendar.",
-    "3. Затем мягко проведет через вход в Bitrix24.",
-    "4. После входа покажет только те действия, которые уже доступны этому сотруднику."
+    "Привет! Это CrownPilot, наш Jarvis для команды SBL.",
+    "Он помогает сотрудникам в одном чате: показывает встречи, задачи из Bitrix24, дни рождения и юбилеи коллег.",
+    "Каждое утро в 10:00 присылает план на день, а за 5 минут до встречи отправляет ссылку прямо в чат.",
+    "Подключение занимает пару минут: сначала вход в Google Calendar, потом в Bitrix24.",
+    "После входа бот показывает только те действия, которые уже доступны именно тебе, чтобы ничего лишнего не мешало.",
+    "",
+    `Ссылка: ${getInviteLink()}`
   ].join("\n");
 }
 
@@ -400,7 +411,7 @@ export function createBot(): Bot {
     );
 
     if (!hasGoogleConnection(userId) || !hasBitrixConnection(userId)) {
-      await ctx.reply("🔌 Давайте подключим нужные сервисы:", {
+      await ctx.reply("🔌 Давайте подключим сервисы, и я сразу начну помогать:", {
         reply_markup: buildConnectionsKeyboard(userId)
       });
     }
@@ -413,7 +424,7 @@ export function createBot(): Bot {
     await ctx.reply(
       [
         "🗓 В какой Google Calendar войти?",
-        "Можно подключить и личный, и рабочий."
+        "Можно подключить и личный, и рабочий календарь."
       ].join("\n"),
       { reply_markup: buildCalendarRoleKeyboard(userId) }
     );
@@ -439,7 +450,7 @@ export function createBot(): Bot {
       [
         formatBitrixConnectionStatus(userId),
         "",
-        "Нажмите кнопку ниже, и я проведу вас через вход в Bitrix24."
+        "Нажмите кнопку ниже, и я спокойно проведу вас через вход в Bitrix24."
       ].join("\n"),
       { reply_markup: new InlineKeyboard().text("Указать домен Bitrix24", `prompt_bitrix_portal:${userId}`) }
     );
@@ -507,7 +518,7 @@ export function createBot(): Bot {
     await ctx.reply(
       [
         "🗓 В какой Google Calendar войти?",
-        "Можно подключить и личный, и рабочий."
+        "Можно подключить и личный, и рабочий календарь."
       ].join("\n"),
       { reply_markup: buildCalendarRoleKeyboard(userId) }
     );
@@ -535,7 +546,7 @@ export function createBot(): Bot {
       );
     } catch (error) {
       console.error(error);
-      await ctx.reply("Google OAuth пока не настроен.");
+      await ctx.reply("Google OAuth пока не настроен. Как только он будет готов, я сразу смогу подключить календарь.");
     }
   });
 
@@ -579,7 +590,7 @@ export function createBot(): Bot {
       );
     } catch (error) {
       console.error(error);
-      await ctx.reply("Вход в Bitrix24 сейчас временно недоступен. Попробуйте еще раз чуть позже.");
+      await ctx.reply("Вход в Bitrix24 сейчас временно недоступен. Ничего не потерялось — попробуйте еще раз чуть позже.");
     }
   });
 
@@ -596,7 +607,7 @@ export function createBot(): Bot {
       const portalDomain = normalizePortalDomain(rawText);
 
       if (!portalDomain || !portalDomain.includes(".")) {
-        await ctx.reply("Не удалось распознать домен портала. Пришлите что-то вроде `yourcompany.bitrix24.ru`.");
+        await ctx.reply("Не удалось распознать домен портала. Пришлите домен в формате `yourcompany.bitrix24.ru`.");
         return;
       }
 
@@ -619,12 +630,12 @@ export function createBot(): Bot {
             connection.mappedUserName
               ? `Ваш Bitrix user: ${connection.mappedUserName}${connection.mappedUserId ? ` (id ${connection.mappedUserId})` : ""}`
               : null,
-            "Бот будет читать только ваши задачи и календарь сотрудников."
+            "Я буду читать только ваши задачи и календарь сотрудников."
           ].filter(Boolean).join("\n")
         );
       } catch (error) {
         console.error(error);
-        await ctx.reply("Не удалось подключить Bitrix24. Попробуйте снова начать вход через кнопку.");
+        await ctx.reply("Не удалось подключить Bitrix24. Ничего не потерялось — попробуйте снова начать вход через кнопку.");
       }
       return;
     }
@@ -740,7 +751,7 @@ export function createBot(): Bot {
           `${hasGoogleConnection(userId) ? "✅" : "◻️"} Google Calendar`,
           `${hasBitrixConnection(userId) ? "✅" : "◻️"} Bitrix24`,
           "",
-          "Выберите сервис, в который хотите войти."
+          "Выберите сервис, который хотите подключить следующим."
         ].join("\n"),
         { reply_markup: buildConnectionsKeyboard(userId) }
       );

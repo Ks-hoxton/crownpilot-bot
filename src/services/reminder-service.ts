@@ -30,8 +30,9 @@ export class ReminderService {
 
   private async sendMorningAgendaIfNeeded(telegramUserId: number) {
     const now = new Date();
-    const key = `${telegramUserId}:${now.toISOString().slice(0, 10)}:morning`;
     const displayTimeZone = this.calendarService.getEffectiveTimeZone(telegramUserId);
+    const dateKey = getDateKeyInTimeZone(now, displayTimeZone);
+    const key = `${telegramUserId}:${dateKey}:morning`;
     const { hour, minute } = getZonedHourMinute(now, displayTimeZone);
     const reminderState = store.getReminderState();
 
@@ -51,7 +52,10 @@ export class ReminderService {
     for (const meeting of meetings) {
       const startMs = new Date(meeting.rawStart).getTime();
       const diffMinutes = Math.round((startMs - nowMs) / 60000);
-      const meetingDate = meeting.rawStart.slice(0, 10);
+      const meetingDate = getDateKeyInTimeZone(
+        new Date(meeting.rawStart),
+        meeting.displayTimeZone ?? this.calendarService.getEffectiveTimeZone(telegramUserId)
+      );
       const key = `${telegramUserId}:${meeting.id}:5min:${meetingDate}`;
       const reminderState = store.getReminderState();
 
