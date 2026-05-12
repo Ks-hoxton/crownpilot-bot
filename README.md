@@ -34,6 +34,7 @@ If `npm` is missing on your machine but `node` exists, install Node.js from the 
 - `/approvals`
 - `/pipeline`
 - `/alerts`
+- `/connect`
 - `/connect_calendar`
 - `/calendars`
 - `/connect_bitrix`
@@ -117,7 +118,7 @@ Important:
 3. The redirect URI should point to:
    - `https://your-domain.com/oauth/google/callback`
    - or `http://localhost:3000/oauth/google/callback` for local tests
-4. In Telegram run `/connect_calendar`
+4. In Telegram run `/connect`
 5. Connect personal and work accounts separately if needed
 6. Use `/calendars` to enable the specific calendars that should feed agenda and reminders
 7. If you connected Google before meeting creation was added, reconnect it once so the bot gets write access to create events
@@ -132,10 +133,10 @@ Important:
 3. The redirect URI should point to:
    - `https://your-domain.com/oauth/bitrix/callback`
    - or `http://localhost:3000/oauth/bitrix/callback` for local tests
-4. In Telegram run:
-   - `/connect_bitrix yourcompany.bitrix24.ru`
-5. Authorize in Bitrix24 and return to Telegram
-6. The bot will detect your Bitrix user and filter deals and tasks by that user
+4. In Telegram run `/connect`
+5. Choose `Bitrix24` and send `yourcompany.bitrix24.ru`
+6. Authorize in Bitrix24 and return to Telegram
+7. The bot will detect your Bitrix user and filter deals and tasks by that user
 
 Webhook fallback:
 

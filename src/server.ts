@@ -14,6 +14,18 @@ const googleCalendarService = new GoogleCalendarService();
 const bitrixOAuthService = new Bitrix24OAuthService();
 const bitrixConnectionService = new Bitrix24ConnectionService();
 
+function renderOAuthSuccessPage(title: string, message: string) {
+  return [
+    "<!doctype html>",
+    '<html lang="ru"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />',
+    `<title>${title}</title>`,
+    '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f6f7fb;color:#111;margin:0;padding:32px}main{max-width:560px;margin:48px auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 10px 30px rgba(0,0,0,.08)}a{display:inline-block;margin-top:16px;background:#2a6df4;color:#fff;text-decoration:none;padding:12px 16px;border-radius:12px;font-weight:600}</style>',
+    "</head><body>",
+    `<main><h1>${title}</h1><p>${message}</p><a href="https://t.me/CrownPilotBot">Вернуться в Telegram</a></main>`,
+    "</body></html>"
+  ].join("");
+}
+
 export function createHttpServer(bot: Bot) {
   return http.createServer(async (req, res) => {
     const config = getConfig();
@@ -77,12 +89,13 @@ export function createHttpServer(bot: Bot) {
             userInfo.email ? `Аккаунт: ${userInfo.email}` : null,
             `Найдено календарей: ${calendars.length}`,
             "По умолчанию включен primary calendar.",
-            "Используйте /calendars, чтобы включить личный и рабочий календари по отдельности."
+            "Используйте /calendars, чтобы включить личный и рабочий календари по отдельности.",
+            "Следующий шаг: подключите второй Google-аккаунт или Bitrix24 через /connect."
           ].filter(Boolean).join("\n")
         );
 
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end("<h1>Google Calendar connected</h1><p>You can return to Telegram.</p>");
+        res.end(renderOAuthSuccessPage("Google Calendar connected", "Подключение завершено. Возвращайтесь в Telegram, я уже привязал календарь к вашему боту."));
       } catch (error) {
         console.error("Google OAuth callback failed", error);
         res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
@@ -128,12 +141,13 @@ export function createHttpServer(bot: Bot) {
               : connection.mappedUserId
                 ? `Ваш Bitrix user id: ${connection.mappedUserId}`
                 : "Bitrix user не определился автоматически.",
-            "Теперь сделки, задачи и reminders будут читаться по вашему аккаунту."
+            "Теперь сделки, задачи и reminders будут читаться по вашему аккаунту.",
+            "Следующий шаг: проверьте /agenda и /alerts."
           ].filter(Boolean).join("\n")
         );
 
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end("<h1>Bitrix24 connected</h1><p>You can return to Telegram.</p>");
+        res.end(renderOAuthSuccessPage("Bitrix24 connected", "Подключение завершено. Возвращайтесь в Telegram, я уже привязал ваш портал Bitrix24."));
       } catch (error) {
         console.error("Bitrix24 OAuth callback failed", error);
         res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });

@@ -121,3 +121,8 @@ export type BitrixConnection = {
   mappedUserId?: string;
   mappedUserName?: string;
 };
+
+export type PendingUserAction =
+  | {
+      type: "awaiting_bitrix_portal";
+    };

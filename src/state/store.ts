@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { BitrixConnection, GoogleAccountConnection, GoogleCalendarRole } from "../types.js";
+import type { BitrixConnection, GoogleAccountConnection, GoogleCalendarRole, PendingUserAction } from "../types.js";
 
 type GoogleOauthState = {
   telegramUserId: number;
@@ -226,6 +226,45 @@ export const store = {
     return reminderState;
   },
 
+  savePendingUserAction(telegramUserId: number, action: PendingUserAction) {
+    this.rememberTelegramUser(telegramUserId);
+    db.prepare(`
+      INSERT INTO pending_user_actions (
+        telegram_user_id,
+        action_type,
+        encrypted_payload
+      ) VALUES (?, ?, ?)
+      ON CONFLICT(telegram_user_id) DO UPDATE SET
+        action_type = excluded.action_type,
+        encrypted_payload = excluded.encrypted_payload
+    `).run(
+      telegramUserId,
+      action.type,
+      encryptText(JSON.stringify(action))
+    );
+  },
+
+  getPendingUserAction(telegramUserId: number): PendingUserAction | undefined {
+    const row = db.prepare(`
+      SELECT encrypted_payload
+      FROM pending_user_actions
+      WHERE telegram_user_id = ?
+    `).get(telegramUserId) as { encrypted_payload: string } | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return JSON.parse(decryptText(row.encrypted_payload)) as PendingUserAction;
+  },
+
+  clearPendingUserAction(telegramUserId: number) {
+    db.prepare(`
+      DELETE FROM pending_user_actions
+      WHERE telegram_user_id = ?
+    `).run(telegramUserId);
+  },
+
   markMeetingReminderSent(key: string) {
     reminderState.sentMeetingReminderKeys.add(key);
     persistReminderKey("meeting", key);
@@ -269,6 +308,12 @@ function initializeDatabase() {
       key_type TEXT NOT NULL,
       reminder_key TEXT NOT NULL,
       PRIMARY KEY (key_type, reminder_key)
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS pending_user_actions (
+      telegram_user_id INTEGER PRIMARY KEY,
+      action_type TEXT NOT NULL,
+      encrypted_payload TEXT NOT NULL
     ) STRICT;
   `);
 }
