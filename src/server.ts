@@ -83,17 +83,6 @@ export function createHttpServer(bot: Bot) {
       return;
     }
 
-    if (req.method === "GET" && url.pathname === "/oauth/bitrix/launch") {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(
-        renderBitrixInfoPage(
-          "CrownPilot Bitrix24 handler",
-          "Этот handler используется локальным приложением Bitrix24. Для подключения аккаунта вернитесь в Telegram и используйте команду /connect_bitrix."
-        )
-      );
-      return;
-    }
-
     if (req.method === "GET" && url.pathname === "/oauth/google/callback") {
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
@@ -154,9 +143,20 @@ export function createHttpServer(bot: Bot) {
       return;
     }
 
-    if (req.method === "GET" && url.pathname === "/oauth/bitrix/callback") {
+    if (req.method === "GET" && (url.pathname === "/oauth/bitrix/callback" || url.pathname === "/oauth/bitrix/launch")) {
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
+
+      if (url.pathname === "/oauth/bitrix/launch" && (!code || !state)) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(
+          renderBitrixInfoPage(
+            "CrownPilot Bitrix24 handler",
+            "Этот handler используется локальным приложением Bitrix24. Если вы входили через Telegram, просто вернитесь в Jarvis и повторите подключение."
+          )
+        );
+        return;
+      }
 
       if (!code || !state) {
         res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
