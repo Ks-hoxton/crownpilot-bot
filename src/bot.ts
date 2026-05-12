@@ -140,7 +140,10 @@ function formatBirthdays(title: string, entries: BirthdayEntry[]): string {
   const lines = entries.length === 0
     ? ["Никого нет."]
     : entries.map((entry, index) =>
-      `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}${entry.age ? ` (${entry.age})` : ""}`
+      [
+        `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
+        entry.age ? `Исполняется: ${entry.age}` : null
+      ].filter(Boolean).join("\n")
     );
 
   return [title, "", ...lines].join("\n");
@@ -150,7 +153,10 @@ function formatAnniversaries(title: string, entries: AnniversaryEntry[]): string
   const lines = entries.length === 0
     ? ["Никого нет."]
     : entries.map((entry, index) =>
-      `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""} — ${entry.years} ${pluralizeYears(entry.years)}`
+      [
+        `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
+        `В компании: ${entry.years} ${pluralizeYears(entry.years)}`
+      ].join("\n")
     );
 
   return [title, "", ...lines].join("\n");

@@ -44,13 +44,19 @@ export class AgendaService {
     const birthdayLines = birthdaysToday.length === 0
       ? ["Сегодня дней рождения нет."]
       : birthdaysToday.map((entry, index) =>
-        `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}${entry.age ? ` (${entry.age})` : ""}`
+        [
+          `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
+          entry.age ? `Исполняется: ${entry.age}` : null
+        ].filter(Boolean).join("\n")
       );
 
     const anniversaryLines = anniversariesToday.length === 0
       ? ["Сегодня юбилеев коллег нет."]
       : anniversariesToday.map((entry, index) =>
-        `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""} — ${entry.years} ${pluralizeYears(entry.years)}`
+        [
+          `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
+          `В компании: ${entry.years} ${pluralizeYears(entry.years)}`
+        ].join("\n")
       );
 
     return [
