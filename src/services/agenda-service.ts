@@ -85,14 +85,6 @@ export class AgendaService {
       sections.push("Мои задачи сегодня:", ...taskLines, "", "Дни рождения сегодня:", ...birthdayLines, "", "Юбилеи коллег сегодня:", ...anniversaryLines);
     }
 
-    if (!hasGoogle && hasBitrix) {
-      sections.push("", "Чтобы добавить встречи в план, войдите в Google Calendar.");
-    }
-
-    if (hasGoogle && !hasBitrix) {
-      sections.push("", "Чтобы добавить задачи, дни рождения и юбилеи, войдите в Bitrix24.");
-    }
-
     if (!hasGoogle && !hasBitrix) {
       sections.push("Сначала войдите в Google Calendar и Bitrix24, и я соберу ваш день в одном сообщении.");
     }

@@ -200,7 +200,7 @@ function formatMeetingsList(title: string, meetings: CalendarMeeting[], timeZone
       [
         `${index + 1}. ${meeting.startLabel} — ${meeting.title}`,
         meeting.sourceLabel ? `Календарь: ${meeting.sourceLabel}` : null,
-        meeting.joinUrl ?? meeting.calendarUrl ? `Ссылка: ${meeting.joinUrl ?? meeting.calendarUrl}` : null
+        (meeting.joinUrl ?? meeting.calendarUrl) ? `Ссылка: ${meeting.joinUrl ?? meeting.calendarUrl}` : null
       ].filter(Boolean).join("\n")
     );
 
@@ -213,8 +213,12 @@ function formatMeetingsList(title: string, meetings: CalendarMeeting[], timeZone
 }
 
 function formatBirthdays(title: string, entries: BirthdayEntry[]): string {
-  const lines = entries.length === 0
-    ? ["Никого нет."]
+  const emptyLine = title === "Дни рождения сегодня"
+    ? "Сегодня дней рождения нет."
+    : "Завтра дней рождения нет.";
+
+  const normalizedLines = entries.length === 0
+    ? [emptyLine]
     : entries.map((entry, index) =>
       [
         `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
@@ -222,12 +226,16 @@ function formatBirthdays(title: string, entries: BirthdayEntry[]): string {
       ].filter(Boolean).join("\n")
     );
 
-  return [title, "", ...lines].join("\n");
+  return [title, "", ...normalizedLines].join("\n");
 }
 
 function formatAnniversaries(title: string, entries: AnniversaryEntry[]): string {
-  const lines = entries.length === 0
-    ? ["Никого нет."]
+  const emptyLine = title === "Юбилеи коллег сегодня"
+    ? "Сегодня юбилеев коллег нет."
+    : "Завтра юбилеев коллег нет.";
+
+  const normalizedLines = entries.length === 0
+    ? [emptyLine]
     : entries.map((entry, index) =>
       [
         `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
@@ -235,7 +243,7 @@ function formatAnniversaries(title: string, entries: AnniversaryEntry[]): string
       ].join("\n")
     );
 
-  return [title, "", ...lines].join("\n");
+  return [title, "", ...normalizedLines].join("\n");
 }
 
 function pluralizeYears(value: number): string {
@@ -359,7 +367,7 @@ async function replyAnniversaries(
 function getBitrixUnavailableMessage(): string {
   return [
     "⚠️ Bitrix пока не доступен.",
-    "Войдите в Bitrix24 заново и попробуйте еще раз."
+    "Попробуйте подключить его заново через /connect_bitrix."
   ].join("\n");
 }
 
@@ -567,7 +575,7 @@ export function createBot(): Bot {
       const connectUrl = bitrix24ConnectionService.getOAuthConnectUrl(userId, portalDomain);
       await ctx.reply(
         `🔐 Открываю вход в портал ${portalDomain}.`,
-        { reply_markup: new InlineKeyboard().url("Открыть Bitrix24 OAuth", connectUrl) }
+        { reply_markup: new InlineKeyboard().url("🔐 Войти в Bitrix24", connectUrl) }
       );
     } catch (error) {
       console.error(error);
