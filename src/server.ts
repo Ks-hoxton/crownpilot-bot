@@ -88,7 +88,7 @@ export function createHttpServer(bot: Bot) {
       res.end(
         renderBitrixInfoPage(
           "CrownPilot Bitrix24 handler",
-          "Этот handler используется локальным приложением Bitrix24. Для подключения личного аккаунта вернитесь в Telegram и используйте команду /connect."
+          "Этот handler используется локальным приложением Bitrix24. Для подключения аккаунта вернитесь в Telegram и используйте команду /connect_bitrix."
         )
       );
       return;
@@ -139,8 +139,7 @@ export function createHttpServer(bot: Bot) {
             userInfo.email ? `Аккаунт: ${userInfo.email}` : null,
             `Найдено календарей: ${calendars.length}`,
             "По умолчанию включен primary calendar.",
-            "Используйте /calendars, чтобы включить личный и рабочий календари по отдельности.",
-            "Следующий шаг: подключите второй Google-аккаунт или Bitrix24 через /connect."
+            "Следующий шаг: подключите второй Google-аккаунт или Bitrix24."
           ].filter(Boolean).join("\n")
         );
 
@@ -191,8 +190,7 @@ export function createHttpServer(bot: Bot) {
               : connection.mappedUserId
                 ? `Ваш Bitrix user id: ${connection.mappedUserId}`
                 : "Bitrix user не определился автоматически.",
-            "Теперь сделки, задачи и reminders будут читаться по вашему аккаунту.",
-            "Следующий шаг: проверьте /agenda и /alerts."
+            "Теперь бот будет читать ваши задачи и напоминания по вашему аккаунту."
           ].filter(Boolean).join("\n")
         );
 

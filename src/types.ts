@@ -83,6 +83,25 @@ export type BitrixTask = {
   url?: string;
 };
 
+export type BitrixPerson = {
+  id: string;
+  name: string;
+  birthday?: string;
+  employmentDate?: string;
+  registeredAt?: string;
+  workPosition?: string;
+};
+
+export type BirthdayEntry = {
+  person: BitrixPerson;
+  age?: number;
+};
+
+export type AnniversaryEntry = {
+  person: BitrixPerson;
+  years: number;
+};
+
 export type GoogleCalendarRole = "personal" | "work";
 
 export type GoogleCalendarConfig = {

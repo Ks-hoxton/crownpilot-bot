@@ -55,9 +55,18 @@ export class Bitrix24TasksService {
       .slice(0, 20);
   }
 
-  async getTaskAlerts(telegramUserId?: number): Promise<BitrixTask[]> {
+  async getTaskAlerts(telegramUserId?: number, timeZone?: string): Promise<BitrixTask[]> {
     const tasks = await this.getUrgentTasks(telegramUserId);
-    return tasks.filter((task) => isTodayOrTomorrow(task.deadline));
+    return tasks.filter((task) => isTodayOrTomorrow(task.deadline, timeZone));
+  }
+
+  async getTasksForDay(
+    telegramUserId: number | undefined,
+    dayOffset: 0 | 1,
+    timeZone?: string
+  ): Promise<BitrixTask[]> {
+    const tasks = await this.getUrgentTasks(telegramUserId);
+    return tasks.filter((task) => isOnDayOffset(task.deadline, dayOffset, timeZone));
   }
 }
 
@@ -124,15 +133,45 @@ function getEndOfTomorrowIso(): string {
   return date.toISOString();
 }
 
-function isTodayOrTomorrow(deadline?: string): boolean {
+function isTodayOrTomorrow(deadline?: string, timeZone?: string): boolean {
   if (!deadline) {
     return false;
   }
 
-  const now = new Date();
-  const due = new Date(deadline);
-  const end = new Date();
-  end.setDate(end.getDate() + 1);
-  end.setHours(23, 59, 59, 999);
-  return due >= new Date(now.setHours(0, 0, 0, 0)) && due <= end;
+  return isOnDayOffset(deadline, 0, timeZone) || isOnDayOffset(deadline, 1, timeZone);
+}
+
+function isOnDayOffset(deadline: string | undefined, dayOffset: 0 | 1, timeZone?: string): boolean {
+  if (!deadline) {
+    return false;
+  }
+
+  return getDateKey(deadline, timeZone) === getDateKeyForOffset(dayOffset, timeZone);
+}
+
+function getDateKeyForOffset(dayOffset: 0 | 1, timeZone?: string): string {
+  const base = new Date();
+  base.setUTCDate(base.getUTCDate() + dayOffset);
+  return getDateKey(base, timeZone);
+}
+
+function getDateKey(input: string | Date, timeZone?: string): string {
+  const date = typeof input === "string" ? new Date(input) : input;
+
+  if (!timeZone) {
+    return date.toISOString().slice(0, 10);
+  }
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return `${year}-${month}-${day}`;
 }

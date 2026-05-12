@@ -1,5 +1,4 @@
 import type { Bot } from "grammy";
-import { getConfig } from "../config.js";
 import { store } from "../state/store.js";
 import { AgendaService } from "./agenda-service.js";
 import { GoogleCalendarService } from "./integrations/google-calendar-service.js";
@@ -36,7 +35,7 @@ export class ReminderService {
     const { hour, minute } = getZonedHourMinute(now, displayTimeZone);
     const reminderState = store.getReminderState();
 
-    if (reminderState.sentMorningAgendaKeys.has(key) || hour !== 8 || minute > 10) {
+    if (reminderState.sentMorningAgendaKeys.has(key) || hour !== 10 || minute > 10) {
       return;
     }
 
@@ -53,14 +52,14 @@ export class ReminderService {
       const startMs = new Date(meeting.rawStart).getTime();
       const diffMinutes = Math.round((startMs - nowMs) / 60000);
       const meetingDate = meeting.rawStart.slice(0, 10);
-      const key = `${telegramUserId}:${meeting.id}:10min:${meetingDate}`;
+      const key = `${telegramUserId}:${meeting.id}:5min:${meetingDate}`;
       const reminderState = store.getReminderState();
 
-      if (diffMinutes >= 9 && diffMinutes <= 10 && !reminderState.sentMeetingReminderKeys.has(key)) {
+      if (diffMinutes >= 4 && diffMinutes <= 5 && !reminderState.sentMeetingReminderKeys.has(key)) {
         await this.bot.api.sendMessage(
           telegramUserId,
           [
-            `Через 10 минут встреча: ${meeting.title}`,
+            `Через 5 минут встреча: ${meeting.title}`,
             `Время: ${meeting.startLabel}`,
             `Время показано в: ${formatGmtOffsetLabel(meeting.displayTimeZone ?? this.calendarService.getEffectiveTimeZone(telegramUserId))}`,
             meeting.sourceLabel ? `Календарь: ${meeting.sourceLabel}` : null,
@@ -73,12 +72,11 @@ export class ReminderService {
   }
 
   private async sendTaskRemindersIfNeeded(telegramUserId: number) {
-    const config = getConfig();
-    const tasks = await this.tasksService.getTaskAlerts(telegramUserId);
-    const today = new Date().toISOString().slice(0, 10);
+    const displayTimeZone = this.calendarService.getEffectiveTimeZone(telegramUserId);
+    const tasks = await this.tasksService.getTaskAlerts(telegramUserId, displayTimeZone);
+    const today = getDateKeyInTimeZone(new Date(), displayTimeZone);
     const key = `${telegramUserId}:${today}:tasks`;
     const reminderState = store.getReminderState();
-    const displayTimeZone = this.calendarService.getEffectiveTimeZone(telegramUserId);
 
     if (reminderState.sentTaskReminderKeys.has(key) || tasks.length === 0) {
       return;
@@ -132,4 +130,19 @@ function formatGmtOffsetLabel(timeZone: string): string {
 
   const offset = parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT";
   return offset.replace("UTC", "GMT");
+}
+
+function getDateKeyInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return `${year}-${month}-${day}`;
 }
