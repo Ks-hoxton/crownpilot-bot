@@ -26,6 +26,28 @@ function renderOAuthSuccessPage(title: string, message: string) {
   ].join("");
 }
 
+function renderBitrixInfoPage(title: string, message: string) {
+  return [
+    "<!doctype html>",
+    '<html lang="ru"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />',
+    `<title>${title}</title>`,
+    '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f6f7fb;color:#111;margin:0;padding:32px}main{max-width:640px;margin:48px auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 10px 30px rgba(0,0,0,.08)}code{background:#f1f3f8;border-radius:8px;padding:2px 6px}a{color:#2a6df4}</style>',
+    "</head><body>",
+    `<main><h1>${title}</h1><p>${message}</p><p>Если вы настраиваете локальное приложение Bitrix24 для CrownPilot, используйте этот сервер как безопасную точку интеграции.</p><p><a href="https://t.me/CrownPilotBot">Открыть CrownPilot в Telegram</a></p></main>`,
+    "</body></html>"
+  ].join("");
+}
+
+async function readRequestBody(req: http.IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 export function createHttpServer(bot: Bot) {
   return http.createServer(async (req, res) => {
     const config = getConfig();
@@ -41,6 +63,34 @@ export function createHttpServer(bot: Bot) {
     if (req.method === "GET" && url.pathname === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if ((req.method === "GET" || req.method === "POST") && url.pathname === "/oauth/bitrix/install") {
+      const body = req.method === "POST" ? await readRequestBody(req) : "";
+
+      if (body) {
+        console.log("Bitrix24 install callback received");
+      }
+
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(
+        renderBitrixInfoPage(
+          "Bitrix24 installation callback",
+          "CrownPilot принял установочный callback от Bitrix24. Теперь можно вернуться в портал, сохранить приложение и использовать выданные Client ID и Client Secret."
+        )
+      );
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/oauth/bitrix/launch") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(
+        renderBitrixInfoPage(
+          "CrownPilot Bitrix24 handler",
+          "Этот handler используется локальным приложением Bitrix24. Для подключения личного аккаунта вернитесь в Telegram и используйте команду /connect."
+        )
+      );
       return;
     }
 
