@@ -1,22 +1,34 @@
 import type { BitrixConnection } from "../../types.js";
 import { store } from "../../state/store.js";
+import { Bitrix24OAuthService, normalizePortalDomain } from "./bitrix24-oauth-service.js";
+import { Bitrix24RestClient, endpointToPortalBase } from "./bitrix24-rest-client.js";
 
 export class Bitrix24ConnectionService {
-  async connect(telegramUserId: number, webhookUrl: string): Promise<BitrixConnection> {
+  private readonly restClient = new Bitrix24RestClient();
+  private readonly oauthService = new Bitrix24OAuthService();
+
+  async connectViaWebhook(telegramUserId: number, webhookUrl: string): Promise<BitrixConnection> {
     const normalized = webhookUrl.trim();
 
     if (!normalized.startsWith("https://")) {
       throw new Error("Bitrix24 webhook URL must start with https://");
     }
 
-    const portalBase = extractPortalBase(normalized);
     const fallbackUserId = extractUserIdFromWebhook(normalized);
-    const profile = await this.getCurrentUserProfile(normalized).catch(() => undefined);
+    const draftConnection: BitrixConnection = {
+      telegramUserId,
+      authType: "webhook",
+      webhookUrl: normalized,
+      portalBase: extractPortalBase(normalized),
+      portalDomain: extractPortalDomain(normalized),
+      authUserId: fallbackUserId,
+      mappedUserId: fallbackUserId
+    };
+
+    const profile = await this.restClient.getCurrentUserProfile(draftConnection).catch(() => undefined);
 
     const connection: BitrixConnection = {
-      telegramUserId,
-      webhookUrl: normalized,
-      portalBase,
+      ...draftConnection,
       authUserId: profile?.id ?? fallbackUserId,
       mappedUserId: profile?.id ?? fallbackUserId,
       mappedUserName: profile?.name
@@ -26,30 +38,57 @@ export class Bitrix24ConnectionService {
     return connection;
   }
 
-  isConnected(telegramUserId: number): boolean {
-    return Boolean(store.getBitrixConnection(telegramUserId));
+  async connectViaOAuth(
+    telegramUserId: number,
+    tokenData: {
+      access_token: string;
+      refresh_token?: string;
+      expires_in?: number;
+      client_endpoint?: string;
+      member_id?: string;
+      scope?: string;
+      domain?: string;
+    },
+    fallbackPortalDomain: string
+  ): Promise<BitrixConnection> {
+    const portalDomain = normalizePortalDomain(tokenData.domain ?? fallbackPortalDomain);
+
+    const draftConnection: BitrixConnection = {
+      telegramUserId,
+      authType: "oauth",
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      expiresAt: tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : undefined,
+      clientEndpoint: tokenData.client_endpoint,
+      memberId: tokenData.member_id,
+      scope: tokenData.scope,
+      portalDomain,
+      portalBase: tokenData.client_endpoint ? endpointToPortalBase(tokenData.client_endpoint) : `https://${portalDomain}`
+    };
+
+    const profile = await this.restClient.getCurrentUserProfile(draftConnection).catch(() => undefined);
+
+    const connection: BitrixConnection = {
+      ...draftConnection,
+      authUserId: profile?.id,
+      mappedUserId: profile?.id,
+      mappedUserName: profile?.name
+    };
+
+    store.saveBitrixConnection(connection);
+    return connection;
   }
 
-  private async getCurrentUserProfile(webhookUrl: string): Promise<{ id?: string; name?: string }> {
-    const normalized = webhookUrl.replace(/\/$/, "");
-    const response = await fetch(`${normalized}/profile`);
+  getOAuthConnectUrl(telegramUserId: number, portalDomain: string): string {
+    return this.oauthService.getConnectUrl(telegramUserId, portalDomain);
+  }
 
-    if (!response.ok) {
-      throw new Error(`Bitrix24 profile failed: ${await response.text()}`);
-    }
+  isOAuthConfigured(): boolean {
+    return this.oauthService.isConfigured();
+  }
 
-    const data = await response.json() as {
-      result?: {
-        ID?: string | number;
-        NAME?: string;
-        LAST_NAME?: string;
-      };
-    };
-
-    return {
-      id: data.result?.ID ? String(data.result.ID) : undefined,
-      name: [data.result?.NAME, data.result?.LAST_NAME].filter(Boolean).join(" ").trim() || undefined
-    };
+  isConnected(telegramUserId: number): boolean {
+    return Boolean(store.getBitrixConnection(telegramUserId));
   }
 }
 
@@ -57,6 +96,14 @@ function extractPortalBase(webhookUrl: string): string | undefined {
   try {
     const url = new URL(webhookUrl);
     return `${url.protocol}//${url.host}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractPortalDomain(webhookUrl: string): string | undefined {
+  try {
+    return normalizePortalDomain(webhookUrl);
   } catch {
     return undefined;
   }

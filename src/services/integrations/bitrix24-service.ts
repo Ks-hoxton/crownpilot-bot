@@ -1,6 +1,7 @@
 import { getConfig } from "../../config.js";
 import { store } from "../../state/store.js";
 import type { BitrixDeal, PipelineRisk } from "../../types.js";
+import { Bitrix24RestClient } from "./bitrix24-rest-client.js";
 
 type BitrixListResponse = {
   result?: Array<Record<string, string>>;
@@ -9,12 +10,14 @@ type BitrixListResponse = {
 };
 
 export class Bitrix24Service {
+  private readonly restClient = new Bitrix24RestClient();
+
   async getDeals(telegramUserId?: number): Promise<BitrixDeal[]> {
     const config = getConfig();
     const bitrixConnection = telegramUserId ? store.getBitrixConnection(telegramUserId) : undefined;
-    const webhookUrl = bitrixConnection?.webhookUrl ?? config.BITRIX24_WEBHOOK_URL;
+    const hasAnyConnection = Boolean(bitrixConnection || config.BITRIX24_WEBHOOK_URL);
 
-    if (!webhookUrl) {
+    if (!hasAnyConnection) {
       return mockDeals;
     }
 
@@ -26,7 +29,7 @@ export class Bitrix24Service {
       filter.ASSIGNED_BY_ID = bitrixConnection.mappedUserId;
     }
 
-    const data = await this.callMethod<BitrixListResponse>(webhookUrl, "crm.deal.list", {
+    const data = await this.restClient.callMethod<BitrixListResponse>(telegramUserId, "crm.deal.list", {
       select: [
         "ID",
         "TITLE",
@@ -98,31 +101,6 @@ export class Bitrix24Service {
         issue: describeRisk(deal),
         owner: deal.assignedById ? `user:${deal.assignedById}` : "не назначен"
       }));
-  }
-
-  private async callMethod<T>(webhookUrl: string, method: string, payload: Record<string, unknown>): Promise<T> {
-    const normalized = webhookUrl.replace(/\/$/, "");
-    const response = await fetch(`${normalized}/${method}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Bitrix24 ${method} failed: ${errorBody}`);
-    }
-
-    const data = await response.json() as BitrixListResponse;
-
-    if (data.error) {
-      throw new Error(`Bitrix24 ${method} error: ${data.error_description ?? data.error}`);
-    }
-
-    return data as T;
   }
 }
 

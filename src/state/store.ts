@@ -9,6 +9,11 @@ type GoogleOauthState = {
   role: GoogleCalendarRole;
 };
 
+type BitrixOauthState = {
+  telegramUserId: number;
+  portalDomain: string;
+};
+
 type ReminderState = {
   sentMeetingReminderKeys: Set<string>;
   sentMorningAgendaKeys: Set<string>;
@@ -35,6 +40,7 @@ type EncryptedStatePayload = {
 };
 
 const googleStates = new Map<string, GoogleOauthState>();
+const bitrixStates = new Map<string, BitrixOauthState>();
 const reminderState: ReminderState = {
   sentMeetingReminderKeys: new Set<string>(),
   sentMorningAgendaKeys: new Set<string>(),
@@ -61,6 +67,17 @@ export const store = {
   consumeGoogleOauthState(state: string): GoogleOauthState | undefined {
     const oauthState = googleStates.get(state);
     googleStates.delete(state);
+    return oauthState;
+  },
+
+  saveBitrixOauthState(state: string, data: BitrixOauthState) {
+    bitrixStates.set(state, data);
+    this.rememberTelegramUser(data.telegramUserId);
+  },
+
+  consumeBitrixOauthState(state: string): BitrixOauthState | undefined {
+    const oauthState = bitrixStates.get(state);
+    bitrixStates.delete(state);
     return oauthState;
   },
 

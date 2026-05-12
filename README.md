@@ -11,7 +11,7 @@ This repository currently includes:
 - env validation
 - placeholder services for brief, approvals, and integrations
 - Google OAuth callback server
-- Bitrix24 webhook connection flow
+- Bitrix24 OAuth plus webhook fallback
 - GPT-5 advice layer via OpenAI Responses API
 - executive alerts service
 
@@ -83,7 +83,10 @@ If `npm` is missing on your machine but `node` exists, install Node.js from the 
    - `GOOGLE_CLIENT_ID`
    - `GOOGLE_CLIENT_SECRET`
    - `GOOGLE_REDIRECT_URI`
-   - future Bitrix24 credentials if needed
+   - `BITRIX24_CLIENT_ID`
+   - `BITRIX24_CLIENT_SECRET`
+   - `BITRIX24_REDIRECT_URI`
+   - optional `BITRIX24_WEBHOOK_URL` if you still want a global fallback
 5. Set `APP_BASE_URL` to your Railway public URL
 6. Attach a persistent volume and mount it to `/app/data`
 7. Deploy
@@ -121,11 +124,24 @@ Important:
 
 ### Bitrix24
 
+1. Register a Bitrix24 local app or prepare OAuth app credentials
+2. Set:
+   - `BITRIX24_CLIENT_ID`
+   - `BITRIX24_CLIENT_SECRET`
+   - `BITRIX24_REDIRECT_URI`
+3. The redirect URI should point to:
+   - `https://your-domain.com/oauth/bitrix/callback`
+   - or `http://localhost:3000/oauth/bitrix/callback` for local tests
+4. In Telegram run:
+   - `/connect_bitrix yourcompany.bitrix24.ru`
+5. Authorize in Bitrix24 and return to Telegram
+6. The bot will detect your Bitrix user and filter deals and tasks by that user
+
+Webhook fallback:
+
 1. Create an incoming webhook in Bitrix24
-2. In Telegram run `/connect_bitrix`
-3. Send:
+2. Send:
    - `bitrix https://yourcompany.bitrix24.ru/rest/1/your_webhook/`
-4. The bot will try to detect your Bitrix user automatically and filter tasks by that user
 
 ## AI Layer
 

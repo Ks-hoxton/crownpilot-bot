@@ -1,6 +1,7 @@
 import { getConfig } from "../../config.js";
 import { store } from "../../state/store.js";
 import type { BitrixTask } from "../../types.js";
+import { Bitrix24RestClient } from "./bitrix24-rest-client.js";
 
 type BitrixTasksListResponse = {
   result?: {
@@ -11,12 +12,14 @@ type BitrixTasksListResponse = {
 };
 
 export class Bitrix24TasksService {
+  private readonly restClient = new Bitrix24RestClient();
+
   async getUrgentTasks(telegramUserId?: number): Promise<BitrixTask[]> {
     const config = getConfig();
     const bitrixConnection = telegramUserId ? store.getBitrixConnection(telegramUserId) : undefined;
     const webhookUrl = bitrixConnection?.webhookUrl ?? config.BITRIX24_WEBHOOK_URL;
 
-    if (!webhookUrl) {
+    if (!bitrixConnection && !webhookUrl) {
       return mockTasks;
     }
 
@@ -30,7 +33,7 @@ export class Bitrix24TasksService {
       filter.RESPONSIBLE_ID = bitrixConnection.mappedUserId;
     }
 
-    const data = await this.callMethod<BitrixTasksListResponse>(webhookUrl, "tasks.task.list", {
+    const data = await this.restClient.callMethod<BitrixTasksListResponse>(telegramUserId, "tasks.task.list", {
       order: {
         DEADLINE: "asc"
       },
@@ -47,7 +50,7 @@ export class Bitrix24TasksService {
 
     const items = data.result?.tasks ?? [];
     return items
-      .map((item) => normalizeTask(item, webhookUrl))
+      .map((item) => normalizeTask(item, bitrixConnection?.portalBase ?? extractPortalBase(webhookUrl ?? "")))
       .filter((task) => task.deadline)
       .slice(0, 20);
   }
@@ -55,30 +58,6 @@ export class Bitrix24TasksService {
   async getTaskAlerts(telegramUserId?: number): Promise<BitrixTask[]> {
     const tasks = await this.getUrgentTasks(telegramUserId);
     return tasks.filter((task) => isTodayOrTomorrow(task.deadline));
-  }
-
-  private async callMethod<T>(webhookUrl: string, method: string, payload: Record<string, unknown>): Promise<T> {
-    const normalized = webhookUrl.replace(/\/$/, "");
-    const response = await fetch(`${normalized}/${method}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Bitrix24 ${method} failed: ${errorBody}`);
-    }
-
-    const data = await response.json() as BitrixTasksListResponse;
-    if (data.error) {
-      throw new Error(`Bitrix24 ${method} error: ${data.error_description ?? data.error}`);
-    }
-
-    return data as T;
   }
 }
 
@@ -103,7 +82,7 @@ const mockTasks: BitrixTask[] = [
   }
 ];
 
-function normalizeTask(item: Record<string, unknown>, webhookUrl: string): BitrixTask {
+function normalizeTask(item: Record<string, unknown>, portalBase?: string): BitrixTask {
   const id = String(item.id ?? item.ID ?? "");
   const title = String(item.title ?? item.TITLE ?? "Без названия");
   const deadline = typeof item.deadline === "string"
@@ -116,8 +95,6 @@ function normalizeTask(item: Record<string, unknown>, webhookUrl: string): Bitri
     : typeof item.RESPONSIBLE_ID === "string"
       ? item.RESPONSIBLE_ID
       : undefined;
-  const portalBase = extractPortalBase(webhookUrl);
-
   return {
     id,
     title,

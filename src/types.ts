@@ -107,8 +107,16 @@ export type GoogleAccountConnection = {
 
 export type BitrixConnection = {
   telegramUserId: number;
-  webhookUrl: string;
+  authType: "webhook" | "oauth";
+  webhookUrl?: string;
   portalBase?: string;
+  portalDomain?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  clientEndpoint?: string;
+  memberId?: string;
+  scope?: string;
   authUserId?: string;
   mappedUserId?: string;
   mappedUserName?: string;

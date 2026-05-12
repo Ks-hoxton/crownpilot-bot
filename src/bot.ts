@@ -6,6 +6,7 @@ import { AlertsService } from "./services/alerts-service.js";
 import { BriefService } from "./services/brief-service.js";
 import { ExecutiveContextService } from "./services/executive-context-service.js";
 import { Bitrix24ConnectionService } from "./services/integrations/bitrix24-connection-service.js";
+import { normalizePortalDomain } from "./services/integrations/bitrix24-oauth-service.js";
 import { Bitrix24Service } from "./services/integrations/bitrix24-service.js";
 import { Bitrix24TasksService } from "./services/integrations/bitrix24-tasks-service.js";
 import { GoogleCalendarService } from "./services/integrations/google-calendar-service.js";
@@ -50,6 +51,12 @@ function buildCalendarRoleKeyboard(telegramUserId: number) {
     .text("Личный Google", `connect_calendar:personal:${telegramUserId}`)
     .row()
     .text("Рабочий Google", `connect_calendar:work:${telegramUserId}`);
+}
+
+function buildBitrixConnectKeyboard(telegramUserId: number, portalDomain: string) {
+  const keyboard = new InlineKeyboard();
+  keyboard.text("Подключить Bitrix24", `connect_bitrix_oauth:${telegramUserId}:${portalDomain}`);
+  return keyboard;
 }
 
 function buildCalendarSettingsKeyboard(telegramUserId: number) {
@@ -99,6 +106,28 @@ function getCreateMeetingHelpText() {
     "/create_meeting 2026-05-12 15:00 | Созвон по продукту | Сверить roadmap и роли | 45 | ceo@company.com",
     'или просто напишите: "создай встречу завтра в 15:00 с командой продукта на 45 минут"'
   ].join("\n");
+}
+
+function formatBitrixConnectionStatus(telegramUserId: number): string {
+  const connection = store.getBitrixConnection(telegramUserId);
+
+  if (!connection) {
+    return [
+      "Bitrix24 пока не подключен.",
+      "Для OAuth отправьте: /connect_bitrix yourcompany.bitrix24.ru",
+      "Или как fallback: bitrix https://yourcompany.bitrix24.ru/rest/1/your_webhook/"
+    ].join("\n");
+  }
+
+  return [
+    `Bitrix24 подключен через ${connection.authType === "oauth" ? "OAuth" : "webhook"}.`,
+    connection.portalBase ? `Портал: ${connection.portalBase}` : null,
+    connection.mappedUserName
+      ? `Пользователь: ${connection.mappedUserName}${connection.mappedUserId ? ` (id ${connection.mappedUserId})` : ""}`
+      : connection.mappedUserId
+        ? `Пользователь Bitrix: ${connection.mappedUserId}`
+        : null
+  ].filter(Boolean).join("\n");
 }
 
 function formatCreatedMeetingMessage(event: {
@@ -401,20 +430,30 @@ export function createBot(): Bot {
     const userId = getTelegramUserId(ctx);
     if (!userId) return;
     store.rememberTelegramUser(userId);
-    const existing = store.getBitrixConnection(userId);
+    const rawPortal = ctx.match?.trim();
 
-    if (existing) {
-      await ctx.reply("Bitrix24 уже подключен. На следующем этапе добавим обновление и переподключение.");
+    if (rawPortal && bitrix24ConnectionService.isOAuthConfigured()) {
+      const portalDomain = normalizePortalDomain(rawPortal);
+      await ctx.reply(
+        [
+          `Подготовил OAuth для портала ${portalDomain}.`,
+          "Нажмите кнопку ниже, авторизуйтесь в Bitrix24 и вернитесь в Telegram."
+        ].join("\n"),
+        { reply_markup: buildBitrixConnectKeyboard(userId, portalDomain) }
+      );
       return;
     }
 
     await ctx.reply(
       [
-        "Чтобы подключить Bitrix24, отправьте мне webhook URL следующим сообщением.",
-        "Формат:",
-        "bitrix https://yourcompany.bitrix24.ru/rest/1/your_webhook/",
+        formatBitrixConnectionStatus(userId),
         "",
-        "После подключения я попробую определить ваш Bitrix user автоматически и буду фильтровать задачи по нему."
+        bitrix24ConnectionService.isOAuthConfigured()
+          ? "Для нормального подключения отправьте:\n/connect_bitrix yourcompany.bitrix24.ru"
+          : "Bitrix OAuth пока не настроен на сервере.",
+        "",
+        "Fallback-вариант через webhook:",
+        "bitrix https://yourcompany.bitrix24.ru/rest/1/your_webhook/"
       ].join("\n")
     );
   });
@@ -558,6 +597,35 @@ export function createBot(): Bot {
     }
   });
 
+  bot.callbackQuery(/^connect_bitrix_oauth:(\d+):(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+
+    const telegramUserId = Number(ctx.match[1]);
+    const portalDomain = normalizePortalDomain(ctx.match[2]);
+    const userId = getTelegramUserId(ctx);
+
+    if (!userId) return;
+
+    if (telegramUserId !== userId) {
+      await ctx.reply("Эта кнопка привязана к другому пользователю.");
+      return;
+    }
+
+    try {
+      const connectUrl = bitrix24ConnectionService.getOAuthConnectUrl(userId, portalDomain);
+      await ctx.reply(
+        [
+          `Подключаем портал ${portalDomain}.`,
+          "Откройте ссылку ниже, подтвердите доступ и вернитесь в Telegram."
+        ].join("\n"),
+        { reply_markup: new InlineKeyboard().url("Open Bitrix24 OAuth", connectUrl) }
+      );
+    } catch (error) {
+      console.error(error);
+      await ctx.reply("Bitrix OAuth пока не настроен. Нужны `BITRIX24_CLIENT_ID`, `BITRIX24_CLIENT_SECRET`, `BITRIX24_REDIRECT_URI`.");
+    }
+  });
+
   bot.callbackQuery(/^tglcal:([^:]+):(\d+)$/, async (ctx) => {
     const userId = getTelegramUserId(ctx);
     if (!userId) return;
@@ -631,13 +699,60 @@ export function createBot(): Bot {
       return;
     }
 
+    if (input.startsWith("/connect_bitrix ")) {
+      const rawPortal = ctx.message.text.replace(/^\/connect_bitrix(?:@\w+)?\s+/i, "").trim();
+
+      if (!rawPortal) {
+        await ctx.reply("Формат: /connect_bitrix yourcompany.bitrix24.ru");
+        return;
+      }
+
+      if (!bitrix24ConnectionService.isOAuthConfigured()) {
+        await ctx.reply("Bitrix OAuth пока не настроен на сервере. Временно можно подключить webhook форматом `bitrix https://...`.");
+        return;
+      }
+
+      const portalDomain = normalizePortalDomain(rawPortal);
+      await ctx.reply(
+        [
+          `Подготовил OAuth для портала ${portalDomain}.`,
+          "Нажмите кнопку ниже, чтобы авторизоваться."
+        ].join("\n"),
+        { reply_markup: buildBitrixConnectKeyboard(userId, portalDomain) }
+      );
+      return;
+    }
+
+    if (input.startsWith("portal ") || input.startsWith("bitrix24 ")) {
+      const portalDomain = normalizePortalDomain(ctx.message.text.split(/\s+/, 2)[1] ?? "");
+
+      if (!portalDomain) {
+        await ctx.reply("Формат: portal yourcompany.bitrix24.ru");
+        return;
+      }
+
+      if (!bitrix24ConnectionService.isOAuthConfigured()) {
+        await ctx.reply("Bitrix OAuth пока не настроен на сервере. Временно можно подключить webhook форматом `bitrix https://...`.");
+        return;
+      }
+
+      await ctx.reply(
+        [
+          `Подготовил OAuth для портала ${portalDomain}.`,
+          "Нажмите кнопку ниже, чтобы авторизоваться."
+        ].join("\n"),
+        { reply_markup: buildBitrixConnectKeyboard(userId, portalDomain) }
+      );
+      return;
+    }
+
     if (input.startsWith("bitrix https://")) {
       try {
         const webhookUrl = ctx.message.text.slice("bitrix ".length);
-        const connection = await bitrix24ConnectionService.connect(userId, webhookUrl);
+        const connection = await bitrix24ConnectionService.connectViaWebhook(userId, webhookUrl);
         await ctx.reply(
           [
-            "Bitrix24 подключен.",
+            "Bitrix24 подключен через webhook.",
             connection.portalBase ? `Портал: ${connection.portalBase}` : null,
             connection.mappedUserName
               ? `Ваш Bitrix user: ${connection.mappedUserName}${connection.mappedUserId ? ` (id ${connection.mappedUserId})` : ""}`

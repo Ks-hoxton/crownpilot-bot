@@ -13,6 +13,9 @@ const configSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().optional(),
+  BITRIX24_CLIENT_ID: z.string().optional(),
+  BITRIX24_CLIENT_SECRET: z.string().optional(),
+  BITRIX24_REDIRECT_URI: z.string().optional(),
   BITRIX24_WEBHOOK_URL: z.string().optional(),
   DEFAULT_TIMEZONE: z.string().default("Europe/Moscow")
 });
