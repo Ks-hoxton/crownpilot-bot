@@ -1,7 +1,7 @@
 import http from "node:http";
 import { URL } from "node:url";
 import crypto from "node:crypto";
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import { getConfig } from "./config.js";
 import { Bitrix24ConnectionService } from "./services/integrations/bitrix24-connection-service.js";
 import { GoogleCalendarService } from "./services/integrations/google-calendar-service.js";
@@ -13,6 +13,51 @@ const googleOAuthService = new GoogleOAuthService();
 const googleCalendarService = new GoogleCalendarService();
 const bitrixOAuthService = new Bitrix24OAuthService();
 const bitrixConnectionService = new Bitrix24ConnectionService();
+
+function buildMainMenuKeyboard(telegramUserId: number) {
+  const hasGoogle = store.getGoogleConnections(telegramUserId).length > 0;
+  const hasBitrix = Boolean(store.getBitrixConnection(telegramUserId));
+  const keyboard = new Keyboard();
+
+  if (hasGoogle || hasBitrix) {
+    keyboard.text("✨ План на сегодня");
+  }
+
+  if (hasGoogle) {
+    keyboard.text("📅 Мои встречи сегодня");
+  }
+
+  if (hasGoogle || hasBitrix) {
+    keyboard.row();
+  }
+
+  if (hasBitrix) {
+    keyboard.text("✅ Мои задачи сегодня").text("🗂 Мои задачи завтра").row();
+    keyboard.text("🎂 Дни рождения").text("🏅 Юбилеи").row();
+  }
+
+  if (!hasGoogle) {
+    keyboard.text("🔐 Войти в Google Calendar");
+  }
+
+  if (!hasBitrix) {
+    keyboard.text("🔐 Войти в Bitrix24");
+  }
+
+  keyboard.row().text("👥 Пригласить коллегу");
+  return keyboard.resized().persistent();
+}
+
+function buildBitrixPromptKeyboard(telegramUserId: number) {
+  return new InlineKeyboard().text("🧩 Подключить Bitrix24", `prompt_bitrix_portal:${telegramUserId}`);
+}
+
+function buildGooglePromptKeyboard(telegramUserId: number) {
+  return new InlineKeyboard()
+    .text("🧑 Личный Google Calendar", `connect_calendar:personal:${telegramUserId}`)
+    .row()
+    .text("🏢 Рабочий Google Calendar", `connect_calendar:work:${telegramUserId}`);
+}
 
 function renderOAuthSuccessPage(title: string, message: string) {
   return [
@@ -126,10 +171,25 @@ export function createHttpServer(bot: Bot) {
           [
             `✅ ${oauthState.role === "personal" ? "Личный" : "Рабочий"} Google Calendar подключен.`,
             userInfo.email ? `Аккаунт: ${userInfo.email}` : null,
-            `Найдено календарей: ${calendars.length}`,
-            "По умолчанию включен primary calendar.",
-            "Если хотите задачи, дни рождения и юбилеи в одном окне, следующим шагом войдите в Bitrix24."
+            "",
+            "Теперь уже доступно:",
+            "• 📅 Мои встречи сегодня",
+            "• ✨ План на сегодня",
+            "• ⏰ План дня в 10:00 по вашему календарю",
+            "• 🔗 Ссылка в чат за 5 минут до встречи",
+            "",
+            "Следующий шаг: подключите Bitrix24, и я добавлю задачи, дни рождения и юбилеи коллег."
           ].filter(Boolean).join("\n")
+          ,
+          {
+            reply_markup: buildMainMenuKeyboard(oauthState.telegramUserId)
+          }
+        );
+
+        await bot.api.sendMessage(
+          oauthState.telegramUserId,
+          "🧩 Хотите добавить задачи и события команды? Подключите Bitrix24 одним следующим шагом.",
+          { reply_markup: buildBitrixPromptKeyboard(oauthState.telegramUserId) }
         );
 
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -190,9 +250,27 @@ export function createHttpServer(bot: Bot) {
               : connection.mappedUserId
                 ? `Ваш Bitrix user id: ${connection.mappedUserId}`
                 : "Bitrix user не определился автоматически.",
-            "Теперь я могу показывать ваши задачи, дни рождения и юбилеи коллег."
+            "",
+            "Теперь уже доступно:",
+            "• ✅ Мои задачи сегодня и завтра",
+            "• 🎂 Дни рождения на сегодня и ближайшие 3 дня",
+            "• 🏅 Юбилеи на сегодня и ближайшие 3 дня",
+            "",
+            "Если подключите Google Calendar, я добавлю встречи, план дня в 10:00 и ссылку в чат за 5 минут до звонка."
           ].filter(Boolean).join("\n")
+          ,
+          {
+            reply_markup: buildMainMenuKeyboard(oauthState.telegramUserId)
+          }
         );
+
+        if (store.getGoogleConnections(oauthState.telegramUserId).length === 0) {
+          await bot.api.sendMessage(
+            oauthState.telegramUserId,
+            "🗓 Хотите добавить встречи и утренний план дня? Подключите Google Calendar.",
+            { reply_markup: buildGooglePromptKeyboard(oauthState.telegramUserId) }
+          );
+        }
 
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(renderOAuthSuccessPage("Bitrix24 connected", "Подключение завершено. Возвращайтесь в Telegram, я уже привязал ваш портал Bitrix24."));

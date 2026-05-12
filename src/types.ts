@@ -95,11 +95,15 @@ export type BitrixPerson = {
 export type BirthdayEntry = {
   person: BitrixPerson;
   age?: number;
+  dayOffset: number;
+  eventDate: string;
 };
 
 export type AnniversaryEntry = {
   person: BitrixPerson;
   years: number;
+  dayOffset: number;
+  eventDate: string;
 };
 
 export type GoogleCalendarRole = "personal" | "work";

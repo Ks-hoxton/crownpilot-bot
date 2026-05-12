@@ -62,8 +62,7 @@ function buildMainMenuKeyboard(telegramUserId: number) {
 
   if (hasBitrix) {
     keyboard.text("✅ Мои задачи сегодня").text("🗂 Мои задачи завтра").row();
-    keyboard.text("🎂 Дни рождения сегодня").text("🎂 Дни рождения завтра").row();
-    keyboard.text("🏅 Юбилеи сегодня").text("🏅 Юбилеи завтра").row();
+    keyboard.text("🎂 Дни рождения").text("🏅 Юбилеи").row();
   }
 
   if (!hasGoogle) {
@@ -223,37 +222,35 @@ function formatMeetingsList(title: string, meetings: CalendarMeeting[], timeZone
 }
 
 function formatBirthdays(title: string, entries: BirthdayEntry[]): string {
-  const emptyLine = title === "Дни рождения сегодня"
-    ? "Сегодня в команде нет дней рождения."
-    : "Завтра в команде нет дней рождения.";
+  if (entries.length === 0) {
+    return [title, "", "В ближайшие 4 дня дней рождения нет."].join("\n");
+  }
 
-  const normalizedLines = entries.length === 0
-    ? [emptyLine]
-    : entries.map((entry, index) =>
-      [
-        `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
-        entry.age ? `Исполняется: ${entry.age}` : null
-      ].filter(Boolean).join("\n")
-    );
+  const lines = entries.map((entry, index) =>
+    [
+      `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
+      `Дата: ${entry.eventDate}${entry.dayOffset === 0 ? " · сегодня" : ""}`,
+      entry.age ? `Исполняется: ${entry.age}` : null
+    ].filter(Boolean).join("\n")
+  );
 
-  return [title, "", ...normalizedLines].join("\n");
+  return [title, "", ...lines].join("\n\n");
 }
 
 function formatAnniversaries(title: string, entries: AnniversaryEntry[]): string {
-  const emptyLine = title === "Юбилеи коллег сегодня"
-    ? "Сегодня в команде нет юбилеев."
-    : "Завтра в команде нет юбилеев.";
+  if (entries.length === 0) {
+    return [title, "", "В ближайшие 4 дня юбилеев нет."].join("\n");
+  }
 
-  const normalizedLines = entries.length === 0
-    ? [emptyLine]
-    : entries.map((entry, index) =>
-      [
-        `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
-        `В компании: ${entry.years} ${pluralizeYears(entry.years)}`
-      ].join("\n")
-    );
+  const lines = entries.map((entry, index) =>
+    [
+      `${index + 1}. ${entry.person.name}${entry.person.workPosition ? `, ${entry.person.workPosition}` : ""}`,
+      `Дата: ${entry.eventDate}${entry.dayOffset === 0 ? " · сегодня" : ""}`,
+      `В компании: ${entry.years} ${pluralizeYears(entry.years)}`
+    ].join("\n")
+  );
 
-  return [title, "", ...normalizedLines].join("\n");
+  return [title, "", ...lines].join("\n\n");
 }
 
 function pluralizeYears(value: number): string {
@@ -332,11 +329,7 @@ async function replyMyTasks(
   }
 }
 
-async function replyBirthdays(
-  ctx: ReplyContext,
-  userId: number,
-  dayOffset: 0 | 1
-) {
+async function replyBirthdays(ctx: ReplyContext, userId: number) {
   if (!hasBitrixConnection(userId)) {
     await ctx.reply(getBitrixLoginRequiredMessage(), {
       reply_markup: buildConnectionsKeyboard(userId)
@@ -346,18 +339,14 @@ async function replyBirthdays(
 
   const timeZone = calendarService.getEffectiveTimeZone(userId);
   try {
-    const entries = await peopleService.getBirthdaysForDay(userId, dayOffset, timeZone);
-    await ctx.reply(formatBirthdays(dayOffset === 0 ? "Дни рождения сегодня" : "Дни рождения завтра", entries));
+    const entries = await peopleService.getUpcomingBirthdays(userId, timeZone);
+    await ctx.reply(formatBirthdays("🎂 Дни рождения: сегодня и ближайшие 3 дня", entries));
   } catch {
     await ctx.reply(getBitrixUnavailableMessage());
   }
 }
 
-async function replyAnniversaries(
-  ctx: ReplyContext,
-  userId: number,
-  dayOffset: 0 | 1
-) {
+async function replyAnniversaries(ctx: ReplyContext, userId: number) {
   if (!hasBitrixConnection(userId)) {
     await ctx.reply(getBitrixLoginRequiredMessage(), {
       reply_markup: buildConnectionsKeyboard(userId)
@@ -367,8 +356,8 @@ async function replyAnniversaries(
 
   const timeZone = calendarService.getEffectiveTimeZone(userId);
   try {
-    const entries = await peopleService.getAnniversariesForDay(userId, dayOffset, timeZone);
-    await ctx.reply(formatAnniversaries(dayOffset === 0 ? "Юбилеи коллег сегодня" : "Юбилеи коллег завтра", entries));
+    const entries = await peopleService.getUpcomingAnniversaries(userId, timeZone);
+    await ctx.reply(formatAnniversaries("🏅 Юбилеи: сегодня и ближайшие 3 дня", entries));
   } catch {
     await ctx.reply(getBitrixUnavailableMessage());
   }
@@ -386,12 +375,13 @@ function getInviteMessage() {
     "👥 Перешлите коллеге это сообщение:",
     "",
     "Привет! Это CrownPilot, наш Jarvis для команды SBL.",
-    "Он помогает сотрудникам в одном чате: показывает встречи, задачи из Bitrix24, дни рождения и юбилеи коллег.",
-    "Каждое утро в 10:00 присылает план на день, а за 5 минут до встречи отправляет ссылку прямо в чат.",
-    "Подключение занимает пару минут: сначала вход в Google Calendar, потом в Bitrix24.",
-    "После входа бот показывает только те действия, которые уже доступны именно тебе, чтобы ничего лишнего не мешало.",
+    "✨ Он помогает сотрудникам в одном чате: показывает встречи, задачи из Bitrix24, дни рождения и юбилеи коллег.",
+    "⏰ Каждое утро в 10:00 присылает план на день, а за 5 минут до встречи отправляет ссылку прямо в чат.",
+    "🔐 Подключение занимает пару минут: сначала вход в Google Calendar, потом в Bitrix24.",
+    "🪄 После входа бот показывает только те действия, которые уже доступны именно тебе, чтобы ничего лишнего не мешало.",
+    "💙 Открой бота по ссылке ниже и нажми Start в своем личном чате с CrownPilot.",
     "",
-    `Ссылка: ${getInviteLink()}`
+    `🔗 Ссылка: ${getInviteLink()}`
   ].join("\n");
 }
 
@@ -481,28 +471,42 @@ export function createBot(): Bot {
     const userId = getTelegramUserId(ctx);
     if (!userId) return;
     store.rememberTelegramUser(userId);
-    await replyBirthdays(ctx, userId, 0);
+    await replyBirthdays(ctx, userId);
   });
 
   bot.command("birthdays_tomorrow", async (ctx) => {
     const userId = getTelegramUserId(ctx);
     if (!userId) return;
     store.rememberTelegramUser(userId);
-    await replyBirthdays(ctx, userId, 1);
+    await replyBirthdays(ctx, userId);
   });
 
   bot.command("anniversaries_today", async (ctx) => {
     const userId = getTelegramUserId(ctx);
     if (!userId) return;
     store.rememberTelegramUser(userId);
-    await replyAnniversaries(ctx, userId, 0);
+    await replyAnniversaries(ctx, userId);
   });
 
   bot.command("anniversaries_tomorrow", async (ctx) => {
     const userId = getTelegramUserId(ctx);
     if (!userId) return;
     store.rememberTelegramUser(userId);
-    await replyAnniversaries(ctx, userId, 1);
+    await replyAnniversaries(ctx, userId);
+  });
+
+  bot.command("birthdays", async (ctx) => {
+    const userId = getTelegramUserId(ctx);
+    if (!userId) return;
+    store.rememberTelegramUser(userId);
+    await replyBirthdays(ctx, userId);
+  });
+
+  bot.command("anniversaries", async (ctx) => {
+    const userId = getTelegramUserId(ctx);
+    if (!userId) return;
+    store.rememberTelegramUser(userId);
+    await replyAnniversaries(ctx, userId);
   });
 
   bot.callbackQuery(/^open_connect_calendar:(\d+)$/, async (ctx) => {
@@ -688,7 +692,14 @@ export function createBot(): Bot {
       return;
     }
 
-    if (input === "дни рождения сегодня" || input === "🎂 дни рождения сегодня") {
+    if (
+      input === "дни рождения" ||
+      input === "🎂 дни рождения" ||
+      input === "дни рождения сегодня" ||
+      input === "🎂 дни рождения сегодня" ||
+      input === "дни рождения завтра" ||
+      input === "🎂 дни рождения завтра"
+    ) {
       if (!hasBitrixConnection(userId)) {
         await ctx.reply(getBitrixLoginRequiredMessage(), {
           reply_markup: buildConnectionsKeyboard(userId)
@@ -696,11 +707,18 @@ export function createBot(): Bot {
         return;
       }
 
-      await replyBirthdays(ctx, userId, 0);
+      await replyBirthdays(ctx, userId);
       return;
     }
 
-    if (input === "дни рождения завтра" || input === "🎂 дни рождения завтра") {
+    if (
+      input === "юбилеи" ||
+      input === "🏅 юбилеи" ||
+      input === "юбилеи коллег сегодня" ||
+      input === "🏅 юбилеи сегодня" ||
+      input === "юбилеи коллег завтра" ||
+      input === "🏅 юбилеи завтра"
+    ) {
       if (!hasBitrixConnection(userId)) {
         await ctx.reply(getBitrixLoginRequiredMessage(), {
           reply_markup: buildConnectionsKeyboard(userId)
@@ -708,31 +726,7 @@ export function createBot(): Bot {
         return;
       }
 
-      await replyBirthdays(ctx, userId, 1);
-      return;
-    }
-
-    if (input === "юбилеи коллег сегодня" || input === "🏅 юбилеи сегодня") {
-      if (!hasBitrixConnection(userId)) {
-        await ctx.reply(getBitrixLoginRequiredMessage(), {
-          reply_markup: buildConnectionsKeyboard(userId)
-        });
-        return;
-      }
-
-      await replyAnniversaries(ctx, userId, 0);
-      return;
-    }
-
-    if (input === "юбилеи коллег завтра" || input === "🏅 юбилеи завтра") {
-      if (!hasBitrixConnection(userId)) {
-        await ctx.reply(getBitrixLoginRequiredMessage(), {
-          reply_markup: buildConnectionsKeyboard(userId)
-        });
-        return;
-      }
-
-      await replyAnniversaries(ctx, userId, 1);
+      await replyAnniversaries(ctx, userId);
       return;
     }
 

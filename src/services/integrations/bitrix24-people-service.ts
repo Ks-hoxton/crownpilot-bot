@@ -12,7 +12,7 @@ const ANNIVERSARY_MILESTONES = new Set([1, 3, 5, 10, 15, 20, 25, 30]);
 export class Bitrix24PeopleService {
   private readonly restClient = new Bitrix24RestClient();
 
-  async getBirthdaysForDay(telegramUserId: number, dayOffset: 0 | 1, timeZone: string): Promise<BirthdayEntry[]> {
+  async getBirthdaysForDay(telegramUserId: number, dayOffset: number, timeZone: string): Promise<BirthdayEntry[]> {
     const target = shiftDate(getNowInTimeZone(timeZone), dayOffset);
     const people = await this.getPeople(telegramUserId);
 
@@ -20,20 +20,30 @@ export class Bitrix24PeopleService {
       .filter((person) => matchesMonthDay(person.birthday, target))
       .map((person) => ({
         person,
-        age: person.birthday ? getAgeOnDate(person.birthday, target) : undefined
+        age: person.birthday ? getAgeOnDate(person.birthday, target) : undefined,
+        dayOffset,
+        eventDate: formatTargetDate(target)
       }))
       .sort((left, right) => left.person.name.localeCompare(right.person.name, "ru"));
+  }
+
+  async getUpcomingBirthdays(
+    telegramUserId: number,
+    timeZone: string,
+    daysAhead = 3
+  ): Promise<BirthdayEntry[]> {
+    const entries = await Promise.all(
+      Array.from({ length: daysAhead + 1 }, (_, dayOffset) => this.getBirthdaysForDay(telegramUserId, dayOffset, timeZone))
+    );
+
+    return entries.flat();
   }
 
   async getAnniversariesForToday(telegramUserId: number, timeZone: string): Promise<AnniversaryEntry[]> {
     return this.getAnniversariesForDay(telegramUserId, 0, timeZone);
   }
 
-  async getAnniversariesForDay(
-    telegramUserId: number,
-    dayOffset: 0 | 1,
-    timeZone: string
-  ): Promise<AnniversaryEntry[]> {
+  async getAnniversariesForDay(telegramUserId: number, dayOffset: number, timeZone: string): Promise<AnniversaryEntry[]> {
     const target = shiftDate(getNowInTimeZone(timeZone), dayOffset);
     const people = await this.getPeople(telegramUserId);
 
@@ -49,10 +59,27 @@ export class Bitrix24PeopleService {
           return undefined;
         }
 
-        return { person, years };
+        return {
+          person,
+          years,
+          dayOffset,
+          eventDate: formatTargetDate(target)
+        };
       })
       .filter((item): item is AnniversaryEntry => Boolean(item))
       .sort((left, right) => left.person.name.localeCompare(right.person.name, "ru"));
+  }
+
+  async getUpcomingAnniversaries(
+    telegramUserId: number,
+    timeZone: string,
+    daysAhead = 3
+  ): Promise<AnniversaryEntry[]> {
+    const entries = await Promise.all(
+      Array.from({ length: daysAhead + 1 }, (_, dayOffset) => this.getAnniversariesForDay(telegramUserId, dayOffset, timeZone))
+    );
+
+    return entries.flat();
   }
 
   private async getPeople(telegramUserId: number): Promise<BitrixPerson[]> {
@@ -104,6 +131,13 @@ function shiftDate(date: Date, days: number): Date {
   const shifted = new Date(date.getTime());
   shifted.setUTCDate(shifted.getUTCDate() + days);
   return shifted;
+}
+
+function formatTargetDate(date: Date): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit"
+  }).format(date);
 }
 
 function matchesMonthDay(rawDate: string | undefined, target: Date): boolean {
