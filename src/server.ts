@@ -135,11 +135,11 @@ export function createHttpServer(bot: Bot) {
         await bot.api.sendMessage(
           oauthState.telegramUserId,
           [
-            `Google ${oauthState.role === "personal" ? "personal" : "work"} account подключен.`,
+            `✅ ${oauthState.role === "personal" ? "Личный" : "Рабочий"} Google Calendar подключен.`,
             userInfo.email ? `Аккаунт: ${userInfo.email}` : null,
             `Найдено календарей: ${calendars.length}`,
             "По умолчанию включен primary calendar.",
-            "Следующий шаг: подключите второй Google-аккаунт или Bitrix24."
+            "Если хотите задачи, дни рождения и юбилеи в одном окне, следующим шагом войдите в Bitrix24."
           ].filter(Boolean).join("\n")
         );
 
@@ -183,14 +183,14 @@ export function createHttpServer(bot: Bot) {
         await bot.api.sendMessage(
           oauthState.telegramUserId,
           [
-            "Bitrix24 подключен через OAuth.",
+            "✅ Bitrix24 подключен.",
             connection.portalBase ? `Портал: ${connection.portalBase}` : null,
             connection.mappedUserName
               ? `Ваш Bitrix user: ${connection.mappedUserName}${connection.mappedUserId ? ` (id ${connection.mappedUserId})` : ""}`
               : connection.mappedUserId
                 ? `Ваш Bitrix user id: ${connection.mappedUserId}`
                 : "Bitrix user не определился автоматически.",
-            "Теперь бот будет читать ваши задачи и напоминания по вашему аккаунту."
+            "Теперь я могу показывать ваши задачи, дни рождения и юбилеи коллег."
           ].filter(Boolean).join("\n")
         );
 

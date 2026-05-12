@@ -63,7 +63,7 @@ export class ReminderService {
             `Время: ${meeting.startLabel}`,
             `Время показано в: ${formatGmtOffsetLabel(meeting.displayTimeZone ?? this.calendarService.getEffectiveTimeZone(telegramUserId))}`,
             meeting.sourceLabel ? `Календарь: ${meeting.sourceLabel}` : null,
-            `Ссылка: ${meeting.joinUrl ?? meeting.calendarUrl ?? "ссылка недоступна"}`
+            meeting.joinUrl ?? meeting.calendarUrl ? `Ссылка: ${meeting.joinUrl ?? meeting.calendarUrl}` : null
           ].filter(Boolean).join("\n")
         );
         store.markMeetingReminderSent(key);

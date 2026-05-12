@@ -2,6 +2,7 @@ import { getConfig } from "../config.js";
 import { GoogleCalendarService } from "./integrations/google-calendar-service.js";
 import { Bitrix24PeopleService } from "./integrations/bitrix24-people-service.js";
 import { Bitrix24TasksService } from "./integrations/bitrix24-tasks-service.js";
+import { store } from "../state/store.js";
 
 export class AgendaService {
   constructor(
@@ -11,23 +12,36 @@ export class AgendaService {
   ) {}
 
   async getMorningAgenda(telegramUserId: number): Promise<string> {
-    const [meetings, tasksToday, birthdaysToday, anniversariesToday] = await Promise.all([
-      this.calendarService.getTodayMeetingItems(telegramUserId),
-      this.tasksService.getTasksForDay(telegramUserId, 0, this.calendarService.getEffectiveTimeZone(telegramUserId)),
-      this.peopleService.getBirthdaysForDay(telegramUserId, 0, this.calendarService.getEffectiveTimeZone(telegramUserId)).catch(() => []),
-      this.peopleService.getAnniversariesForToday(telegramUserId, this.calendarService.getEffectiveTimeZone(telegramUserId)).catch(() => [])
-    ]);
     const displayTimeZone = this.calendarService.getEffectiveTimeZone(telegramUserId);
+    const hasGoogle = store.getGoogleConnections(telegramUserId).length > 0;
+    const hasBitrix = Boolean(store.getBitrixConnection(telegramUserId));
+    const sections: string[] = [];
+
+    const [meetings, tasksToday, birthdaysToday, anniversariesToday] = await Promise.all([
+      hasGoogle ? this.calendarService.getTodayMeetingItems(telegramUserId) : Promise.resolve([]),
+      hasBitrix ? this.tasksService.getTasksForDay(telegramUserId, 0, displayTimeZone).catch(() => []) : Promise.resolve([]),
+      hasBitrix ? this.peopleService.getBirthdaysForDay(telegramUserId, 0, displayTimeZone).catch(() => []) : Promise.resolve([]),
+      hasBitrix ? this.peopleService.getAnniversariesForToday(telegramUserId, displayTimeZone).catch(() => []) : Promise.resolve([])
+    ]);
 
     const meetingLines = meetings.length === 0
-      ? ["Сегодня встреч в календаре нет."]
+      ? ["На сегодня встреч нет."]
       : meetings.map((meeting, index) => {
-        const link = meeting.joinUrl ?? meeting.calendarUrl ?? "ссылка появится после подключения Google Meet/Calendar";
-        return `${index + 1}. ${meeting.startLabel} - ${meeting.title}${meeting.sourceLabel ? `\nКалендарь: ${meeting.sourceLabel}` : ""}\nСсылка: ${link}`;
+        const lines = [`${index + 1}. ${meeting.startLabel} - ${meeting.title}`];
+
+        if (meeting.sourceLabel) {
+          lines.push(`Календарь: ${meeting.sourceLabel}`);
+        }
+
+        if (meeting.joinUrl ?? meeting.calendarUrl) {
+          lines.push(`Ссылка: ${meeting.joinUrl ?? meeting.calendarUrl}`);
+        }
+
+        return lines.join("\n");
       });
 
     const taskLines = tasksToday.length === 0
-      ? ["Нет задач с дедлайном на сегодня."]
+      ? ["На сегодня нет задач."]
       : tasksToday.map((task, index) => {
         const deadline = task.deadline
           ? new Intl.DateTimeFormat("ru-RU", {
@@ -59,22 +73,35 @@ export class AgendaService {
         ].join("\n")
       );
 
+    if (hasGoogle) {
+      sections.push("Мои встречи сегодня:", ...meetingLines);
+    }
+
+    if (hasBitrix) {
+      if (sections.length > 0) {
+        sections.push("");
+      }
+
+      sections.push("Мои задачи сегодня:", ...taskLines, "", "Дни рождения сегодня:", ...birthdayLines, "", "Юбилеи коллег сегодня:", ...anniversaryLines);
+    }
+
+    if (!hasGoogle && hasBitrix) {
+      sections.push("", "Чтобы добавить встречи в план, войдите в Google Calendar.");
+    }
+
+    if (hasGoogle && !hasBitrix) {
+      sections.push("", "Чтобы добавить задачи, дни рождения и юбилеи, войдите в Bitrix24.");
+    }
+
+    if (!hasGoogle && !hasBitrix) {
+      sections.push("Сначала войдите в Google Calendar и Bitrix24, и я соберу ваш день в одном сообщении.");
+    }
+
     return [
       "План на сегодня",
       `Время показано в: ${formatGmtOffsetLabel(displayTimeZone)}`,
       "",
-      "Мои встречи сегодня:",
-      ...meetingLines,
-      "",
-      "Мои задачи сегодня:",
-      ...taskLines
-      ,
-      "",
-      "Дни рождения сегодня:",
-      ...birthdayLines,
-      "",
-      "Юбилеи коллег сегодня:",
-      ...anniversaryLines
+      ...sections
     ].join("\n");
   }
 }

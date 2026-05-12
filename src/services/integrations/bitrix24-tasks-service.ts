@@ -20,7 +20,7 @@ export class Bitrix24TasksService {
     const webhookUrl = bitrixConnection?.webhookUrl ?? config.BITRIX24_WEBHOOK_URL;
 
     if (!bitrixConnection && !webhookUrl) {
-      return mockTasks;
+      return [];
     }
 
     const endOfTomorrow = getEndOfTomorrowIso();
@@ -69,27 +69,6 @@ export class Bitrix24TasksService {
     return tasks.filter((task) => isOnDayOffset(task.deadline, dayOffset, timeZone));
   }
 }
-
-const mockTasks: BitrixTask[] = [
-  {
-    id: "101",
-    title: "Согласовать бюджет на май",
-    deadline: new Date().toISOString(),
-    responsibleId: "17",
-    status: "2",
-    priority: "2",
-    url: "https://example.bitrix24.ru/company/personal/user/17/tasks/task/view/101/"
-  },
-  {
-    id: "102",
-    title: "Дать фидбек по офферу кандидату",
-    deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    responsibleId: "17",
-    status: "2",
-    priority: "1",
-    url: "https://example.bitrix24.ru/company/personal/user/17/tasks/task/view/102/"
-  }
-];
 
 function normalizeTask(item: Record<string, unknown>, portalBase?: string): BitrixTask {
   const id = String(item.id ?? item.ID ?? "");

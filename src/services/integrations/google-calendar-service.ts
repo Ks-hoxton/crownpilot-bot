@@ -113,10 +113,7 @@ export class GoogleCalendarService {
     const displayTimeZone = this.getEffectiveTimeZone(telegramUserId);
 
     if (!telegramUserId || connections.length === 0) {
-      return mockMeetings.map((meeting) => ({
-        ...meeting,
-        displayTimeZone
-      }));
+      return [];
     }
 
     const allMeetings = await Promise.all(connections.map(async (connection) => {
