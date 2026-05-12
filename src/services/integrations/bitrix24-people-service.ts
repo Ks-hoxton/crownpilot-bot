@@ -26,7 +26,15 @@ export class Bitrix24PeopleService {
   }
 
   async getAnniversariesForToday(telegramUserId: number, timeZone: string): Promise<AnniversaryEntry[]> {
-    const target = getNowInTimeZone(timeZone);
+    return this.getAnniversariesForDay(telegramUserId, 0, timeZone);
+  }
+
+  async getAnniversariesForDay(
+    telegramUserId: number,
+    dayOffset: 0 | 1,
+    timeZone: string
+  ): Promise<AnniversaryEntry[]> {
+    const target = shiftDate(getNowInTimeZone(timeZone), dayOffset);
     const people = await this.getPeople(telegramUserId);
 
     return people

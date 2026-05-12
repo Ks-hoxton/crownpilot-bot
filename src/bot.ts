@@ -45,6 +45,7 @@ function getStartMessage() {
     "/birthdays_today",
     "/birthdays_tomorrow",
     "/anniversaries_today",
+    "/anniversaries_tomorrow",
     "",
     'Можно писать и обычным языком: "план на сегодня", "мои задачи сегодня", "подключить календарь".'
   ].join("\n");
@@ -89,7 +90,7 @@ function formatGmtOffsetLabel(timeZone: string, dateLike: string | Date = new Da
 
 function formatTaskList(title: string, tasks: BitrixTask[], timeZone: string): string {
   const lines = tasks.length === 0
-    ? ["Ничего не найдено."]
+    ? [title === "Мои задачи сегодня" ? "На сегодня нет задач." : "На завтра нет задач."]
     : tasks.map((task, index) => {
       const deadline = task.deadline
         ? new Intl.DateTimeFormat("ru-RU", {
@@ -182,22 +183,45 @@ async function replyMyMeetingsToday(ctx: { reply: (text: string) => Promise<unkn
 
 async function replyMyTasks(ctx: { reply: (text: string) => Promise<unknown> }, userId: number, dayOffset: 0 | 1) {
   const timeZone = calendarService.getEffectiveTimeZone(userId);
-  const tasks = await tasksService.getTasksForDay(userId, dayOffset, timeZone);
-  await ctx.reply(
-    formatTaskList(dayOffset === 0 ? "Мои задачи сегодня" : "Мои задачи завтра", tasks, timeZone)
-  );
+  const title = dayOffset === 0 ? "Мои задачи сегодня" : "Мои задачи завтра";
+
+  try {
+    const tasks = await tasksService.getTasksForDay(userId, dayOffset, timeZone);
+    await ctx.reply(formatTaskList(title, tasks, timeZone));
+  } catch {
+    await ctx.reply(getBitrixUnavailableMessage());
+  }
 }
 
 async function replyBirthdays(ctx: { reply: (text: string) => Promise<unknown> }, userId: number, dayOffset: 0 | 1) {
   const timeZone = calendarService.getEffectiveTimeZone(userId);
-  const entries = await peopleService.getBirthdaysForDay(userId, dayOffset, timeZone);
-  await ctx.reply(formatBirthdays(dayOffset === 0 ? "Дни рождения сегодня" : "Дни рождения завтра", entries));
+  try {
+    const entries = await peopleService.getBirthdaysForDay(userId, dayOffset, timeZone);
+    await ctx.reply(formatBirthdays(dayOffset === 0 ? "Дни рождения сегодня" : "Дни рождения завтра", entries));
+  } catch {
+    await ctx.reply(getBitrixUnavailableMessage());
+  }
 }
 
-async function replyAnniversaries(ctx: { reply: (text: string) => Promise<unknown> }, userId: number) {
+async function replyAnniversaries(
+  ctx: { reply: (text: string) => Promise<unknown> },
+  userId: number,
+  dayOffset: 0 | 1
+) {
   const timeZone = calendarService.getEffectiveTimeZone(userId);
-  const entries = await peopleService.getAnniversariesForToday(userId, timeZone);
-  await ctx.reply(formatAnniversaries("Юбилеи коллег сегодня", entries));
+  try {
+    const entries = await peopleService.getAnniversariesForDay(userId, dayOffset, timeZone);
+    await ctx.reply(formatAnniversaries(dayOffset === 0 ? "Юбилеи коллег сегодня" : "Юбилеи коллег завтра", entries));
+  } catch {
+    await ctx.reply(getBitrixUnavailableMessage());
+  }
+}
+
+function getBitrixUnavailableMessage(): string {
+  return [
+    "Bitrix пока не доступен.",
+    "Попробуйте подключить его заново через /connect_bitrix."
+  ].join("\n");
 }
 
 export function createBot(): Bot {
@@ -286,7 +310,14 @@ export function createBot(): Bot {
     const userId = getTelegramUserId(ctx);
     if (!userId) return;
     store.rememberTelegramUser(userId);
-    await replyAnniversaries(ctx, userId);
+    await replyAnniversaries(ctx, userId, 0);
+  });
+
+  bot.command("anniversaries_tomorrow", async (ctx) => {
+    const userId = getTelegramUserId(ctx);
+    if (!userId) return;
+    store.rememberTelegramUser(userId);
+    await replyAnniversaries(ctx, userId, 1);
   });
 
   bot.callbackQuery(/^connect_calendar:(personal|work):(\d+)$/, async (ctx) => {
@@ -436,7 +467,12 @@ export function createBot(): Bot {
     }
 
     if (input === "юбилеи коллег сегодня") {
-      await replyAnniversaries(ctx, userId);
+      await replyAnniversaries(ctx, userId, 0);
+      return;
+    }
+
+    if (input === "юбилеи коллег завтра") {
+      await replyAnniversaries(ctx, userId, 1);
       return;
     }
 
